@@ -1,11 +1,11 @@
-﻿# ADR-0002: PDFsharp for manipulation, PDFium for rendering, both behind abstractions
+# ADR-0002: PDFsharp for manipulation, PDFium for rendering, both behind abstractions
 
 **Status:** Accepted (M1 baseline; implementations land M2/M3)
 
 ## Context
 
 No single permissively-licensed .NET library both manipulates and rasterizes
-PDFs well. iText and Ghostscript are capability-rich but AGPL â€” unacceptable
+PDFs well. iText and Ghostscript are capability-rich but AGPL — unacceptable
 for an MIT-licensed app. QuestPDF is generation-oriented, not manipulation.
 
 ## Decision

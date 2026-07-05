@@ -104,8 +104,9 @@ These standards are inferred from the current repository and
 
 ## Documentation
 
-- Update status, roadmap, changelog, implementation history, decision log and
-  release documents as part of each milestone.
-- Preserve existing documentation history.
-- Prefer incremental updates over rewrites.
-- Clearly distinguish implemented, planned and deferred work.
+- Record a genuine architectural decision as a new ADR in `docs/adr/`, never
+  as a narrative log entry.
+- Do not create status, roadmap, changelog, or history documents — see
+  [../prompts/01_System_Master.md](../prompts/01_System_Master.md).
+- At session end, update [CURRENT_STATE.md](CURRENT_STATE.md) per
+  [../prompts/03_Checkpoint.md](../prompts/03_Checkpoint.md).

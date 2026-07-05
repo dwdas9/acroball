@@ -36,24 +36,8 @@ Use this checklist before declaring a milestone or release complete.
 
 ## Documentation
 
-- `PROJECT_STATUS.md` is current.
-- `ROADMAP.md` distinguishes completed, in-progress, planned and deferred work.
-- `CHANGELOG.md` has a new entry.
-- `IMPLEMENTATION_HISTORY.md` has an append-only entry.
-- `DECISION_LOG.md` records new architectural decisions.
-- Relevant ADRs are updated or added if needed.
-- `docs/releases/<Milestone>.md` is complete.
-- `DEVELOPMENT_SESSION.md` has been folded into permanent docs and refreshed.
-
-## Release Notes
-
-- Objective.
-- Features implemented.
-- Dependencies.
-- Files added.
-- Public interface changes.
-- Test summary.
-- Manual verification.
-- Known issues.
-- Lessons learned.
-- Developer handover.
+- `ARCHITECTURE.md` milestones table reflects what actually shipped.
+- New architectural decisions are recorded as ADRs in `docs/adr/`.
+- A one-paragraph entry is added to `docs/releases/RELEASES.md`.
+- `CURRENT_STATE.md` is overwritten per
+  [../prompts/03_Checkpoint.md](../prompts/03_Checkpoint.md).

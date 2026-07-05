@@ -4,7 +4,7 @@
 
 ## Context
 
-Extensibility is a headline feature. Plugin loading reAcroballs runtime assembly
+Extensibility is a headline feature. Plugin loading requires runtime assembly
 loading, which NativeAOT forbids.
 
 ## Decision

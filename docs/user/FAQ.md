@@ -35,5 +35,5 @@ the full product direction. Placeholder pages remain until each workflow ships.
 Start with:
 
 - [../development/DEVELOPMENT.md](../development/DEVELOPMENT.md)
-- [../development/PROJECT_STATUS.md](../development/PROJECT_STATUS.md)
+- [../development/CURRENT_STATE.md](../development/CURRENT_STATE.md)
 - [../ARCHITECTURE.md](../ARCHITECTURE.md)
