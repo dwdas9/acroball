@@ -1,53 +1,34 @@
-# Development Session
+# Current State
 
 Last updated: 2026-07-06
 
-This document is temporary. It records current work in progress, active
-decisions, blockers and immediate next steps. At the end of a milestone,
-durable information should be folded into release notes, implementation
-history, the decision log and project status, then this file should be
-refreshed for the next milestone.
+## Current Milestone
+Documentation Foundation (closeout)
 
-## Active Work
+## Last Completed Action
+Built out the documentation foundation — `docs/ARCHITECTURE.md`, `docs/development/*`
+(DEVELOPMENT.md, CODING_STANDARDS.md, CONTRIBUTING.md, RELEASE_CHECKLIST.md),
+`docs/releases/RELEASES.md`, `docs/user/*` (USER_GUIDE.md, FAQ.md), and ADRs
+0001–0008 — and authored the Continuous State Management protocol itself
+(`docs/prompts/01_System_Master.md`, `02_Initialize.md`, `03_Checkpoint.md`).
+`dotnet test --no-restore` passed 75 tests on 2026-07-06 (an unsandboxed run;
+a sandboxed run had failed only on `obj/` write permissions, not test logic).
 
-Documentation Foundation.
+This session additionally repaired this file: the prior version did not
+follow the `03_Checkpoint.md` template (no Context Dependency Index, mismatched
+section names) and has been rewritten to conform.
 
-## Current Objective
+## Current Blockers
+None.
 
-Leave the repository in a state where another senior software engineer can
-understand Acroball without external context.
+## Next Immediate Task
+Get the user's decision on the next feature milestone before touching any
+production code: complete the Split / Extract / Rotate UI, or start the
+historical M4 Compress/Protect/Metadata package. No production code should
+be written until this is resolved (per the standing decision not to modify
+production code during the documentation milestone).
 
-## Active Decisions
+## Context Dependency Index
 
-- Preserve existing documentation and ADR history.
-- Create missing `docs/development/`, `docs/releases/`, `docs/user/` and
-  `docs/architecture/` structure.
-- Treat M3 as the Merge Workflow because `src/M3_Prompt.md`, current code and
-  tests all point to that scope.
-- Record visual organizer/PDF rendering as planned work, not completed work.
-- Do not modify production code during this milestone.
-
-## Current Verification
-
-`dotnet test --no-restore` passed 75 tests on 2026-07-06.
-
-The first sandboxed attempt failed with access denied while writing generated
-`obj/` files. An unsandboxed run completed successfully.
-
-## Blockers
-
-None for documentation foundation.
-
-## Open Questions
-
-- Should the next feature milestone complete Split, Extract and Rotate UI
-  before starting the historical M4 Compress/Protect/Metadata package?
-- Should old `Quire` names in source file names be corrected in a future
-  cleanup milestone?
-- Should the project remove tracked empty `error.txt` and `output.txt` files?
-
-## Immediate Next Steps
-
-- Keep roadmap and project status aligned with implementation.
-- Clarify the next feature milestone before starting production code work.
-- Add rendered UI smoke tests when the project introduces Avalonia Headless.
+- src/M3_Prompt.md
+- docs/releases/RELEASES.md
