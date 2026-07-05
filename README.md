@@ -13,9 +13,6 @@ Built with .NET 10 and Avalonia 12. Runs natively on Windows, macOS and Linux.
 
 ## Status
 
-Early development. Milestone 1 (application shell, design system, settings,
-theming) is complete; the first tools land in Milestone 2.
-
 
 | --- | --- |
 | Merge | Milestone 2 |
@@ -42,15 +39,7 @@ dotnet test
 ## Project layout
 
 ```
-src/
-  Acroball.Domain          Pure PDF domain model (no dependencies)
-  Acroball.Application     Use-case contracts and request types
-  Acroball.Infrastructure  Persistence, logging, PDF backends (M2+)
-  Acroball.UI              Avalonia views, view models, design system
-  Acroball.Desktop         Entry point and composition root
-  Acroball.Sdk             Plugin contract assembly
-tests/                  xUnit test suites
-docs/                   Architecture guide and ADRs
+TBD
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture and
