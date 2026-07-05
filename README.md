@@ -13,19 +13,6 @@ Built with .NET 10 and Avalonia 12. Runs natively on Windows, macOS and Linux.
 
 ## Status
 
-
-| --- | --- |
-| Merge | Milestone 2 |
-| Split | Milestone 2 |
-| Rotate | Milestone 2 |
-| Extract pages | Milestone 2 |
-| Organize (visual page editor) | Milestone 3 |
-| Compress | Milestone 4 |
-| Protect (encrypt/decrypt) | Milestone 4 |
-| Metadata editor | Milestone 4 |
-| Plugins | Milestone 5 |
-| Installers & self-update | Milestone 6 |
-
 ## Building
 
 ReAcroballs the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
