@@ -1,0 +1,259 @@
+<!--
+  Control styling on top of FluentTheme.
+
+  Note on selectors: Fluent's own pseudo-state styles set backgrounds on the
+  template ContentPresenter (PART_ContentPresenter) via theme resources, so
+  restyled states here must target that presenter too — a property-level
+  setter on the control alone loses to the template style.
+
+  Shadows are written inline (BoxShadows has no clean resource story).
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ============ Buttons: shared base ============ -->
+
+  <Style Selector="Button">
+    <Setter Property="CornerRadius" Value="{StaticResource Q.Radius.Md}" />
+    <Setter Property="Padding" Value="14,8" />
+    <Setter Property="FontWeight" Value="Medium" />
+  </Style>
+
+  <Style Selector="Button:focus-visible">
+    <Setter Property="BorderBrush" Value="{DynamicResource Q.Brush.FocusRing}" />
+  </Style>
+
+  <!-- ============ Button.primary ============ -->
+
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.Accent}" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.OnAccent}" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.AccentHover}" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.OnAccent}" />
+  </Style>
+
+  <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.AccentPressed}" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.OnAccent}" />
+  </Style>
+
+  <!-- ============ Button.ghost ============ -->
+
+  <Style Selector="Button.ghost">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.TextSecondary}" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <Style Selector="Button.ghost:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.HoverOverlay}" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.TextPrimary}" />
+  </Style>
+
+  <Style Selector="Button.ghost:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.HoverOverlay}" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.TextPrimary}" />
+  </Style>
+
+  <!-- ============ Button.danger ============ -->
+
+  <Style Selector="Button.danger">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.Danger}" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.OnAccent}" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.Danger}" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.OnAccent}" />
+    <Setter Property="Opacity" Value="0.9" />
+  </Style>
+
+  <!-- ============ Button.tool-card ============
+       Custom template: an elevated card that lifts 2px on hover.       -->
+
+  <Style Selector="Button.tool-card">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.Surface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Q.Brush.Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Q.Radius.Lg}" />
+    <Setter Property="Padding" Value="16" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Stretch" />
+    <Setter Property="RenderTransform" Value="none" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
+      </Transitions>
+    </Setter>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="PART_Card"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}"
+                BoxShadow="0 1 2 0 #14000000">
+          <ContentPresenter Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+
+  <Style Selector="Button.tool-card /template/ Border#PART_Card">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.15" Easing="CubicEaseOut" />
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <Style Selector="Button.tool-card:pointerover">
+    <Setter Property="RenderTransform" Value="translateY(-2px)" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Q.Brush.BorderStrong}" />
+  </Style>
+
+  <Style Selector="Button.tool-card:pointerover /template/ Border#PART_Card">
+    <Setter Property="BoxShadow" Value="0 6 16 0 #1F000000" />
+  </Style>
+
+  <Style Selector="Button.tool-card:pressed">
+    <Setter Property="RenderTransform" Value="translateY(0px)" />
+  </Style>
+
+  <Style Selector="Button.tool-card:focus-visible /template/ Border#PART_Card">
+    <Setter Property="BorderBrush" Value="{DynamicResource Q.Brush.FocusRing}" />
+  </Style>
+
+  <!-- ============ RadioButton.segment ============
+       Segmented control member; host it in a Border with the sidebar
+       surface, CornerRadius 9 and Padding 3.                          -->
+
+  <Style Selector="RadioButton.segment">
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.TextSecondary}" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="PART_Seg"
+                Background="Transparent"
+                CornerRadius="7"
+                Padding="14,7">
+          <ContentPresenter Content="{TemplateBinding Content}"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+
+  <Style Selector="RadioButton.segment /template/ Border#PART_Seg">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.12" />
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <Style Selector="RadioButton.segment:pointerover /template/ Border#PART_Seg">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.HoverOverlay}" />
+  </Style>
+
+  <Style Selector="RadioButton.segment:checked">
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.TextPrimary}" />
+  </Style>
+
+  <Style Selector="RadioButton.segment:checked /template/ Border#PART_Seg">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.Surface}" />
+    <Setter Property="BoxShadow" Value="0 1 2 0 #1A000000" />
+  </Style>
+
+  <Style Selector="RadioButton.segment:focus-visible /template/ Border#PART_Seg">
+    <Setter Property="BorderBrush" Value="{DynamicResource Q.Brush.FocusRing}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <!-- ============ ListBox.sidebar ============ -->
+
+  <Style Selector="ListBox.sidebar">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Padding" Value="0" />
+  </Style>
+
+  <Style Selector="ListBox.sidebar ListBoxItem">
+    <Setter Property="Padding" Value="10,7" />
+    <Setter Property="CornerRadius" Value="{StaticResource Q.Radius.Md}" />
+    <Setter Property="Margin" Value="0,1" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.TextSecondary}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <Style Selector="ListBox.sidebar ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.HoverOverlay}" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.TextPrimary}" />
+  </Style>
+
+  <Style Selector="ListBox.sidebar ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.AccentSubtle}" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.Accent}" />
+  </Style>
+
+  <Style Selector="ListBox.sidebar ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.AccentSubtle}" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.Accent}" />
+  </Style>
+
+  <!-- ============ Sidebar bottom (Settings) button ============ -->
+
+  <Style Selector="Button.nav-bottom">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.TextSecondary}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Padding" Value="10,7" />
+  </Style>
+
+  <Style Selector="Button.nav-bottom:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.HoverOverlay}" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.TextPrimary}" />
+  </Style>
+
+  <Style Selector="Button.nav-bottom.active">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.AccentSubtle}" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.Accent}" />
+  </Style>
+
+  <!-- ============ Misc chrome ============ -->
+
+  <Style Selector="ToolTip">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.SurfaceElevated}" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.TextPrimary}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Q.Brush.Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Q.Radius.Md}" />
+    <Setter Property="Padding" Value="10,6" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <Style Selector="ScrollBar">
+    <Setter Property="AllowAutoHide" Value="True" />
+  </Style>
+
+  <!-- Milestone pill used on tool cards and placeholders. -->
+  <Style Selector="Border.pill">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.SurfaceSidebar}" />
+    <Setter Property="CornerRadius" Value="99" />
+    <Setter Property="Padding" Value="8,2" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+  </Style>
+
+</Styles>

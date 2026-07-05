@@ -1,0 +1,59 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Acroball.UI.ViewModels"
+             xmlns:tools="using:Acroball.UI.Tools"
+             mc:Ignorable="d" d:DesignWidth="880" d:DesignHeight="760"
+             x:Class="Acroball.UI.Views.HomeView"
+             x:DataType="vm:HomeViewModel">
+
+  <ScrollViewer>
+    <StackPanel Margin="32" Spacing="24" MaxWidth="1016" HorizontalAlignment="Left">
+
+      <StackPanel Spacing="6">
+        <TextBlock Classes="h1" Text="Everything your PDFs need." />
+        <TextBlock Classes="caption" FontSize="13"
+                   Text="Fast, private and fully offline. Pick a tool to get started." />
+      </StackPanel>
+
+      <ItemsControl ItemsSource="{Binding Tools}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="tools:ToolDefinition">
+            <Button Classes="tool-card"
+                    Width="232"
+                    Margin="0,0,16,16"
+                    Command="{Binding $parent[ItemsControl].((vm:HomeViewModel)DataContext).OpenToolCommand}"
+                    CommandParameter="{Binding}">
+              <StackPanel Spacing="10">
+                <Border Width="40" Height="40" CornerRadius="10"
+                        Background="{DynamicResource Q.Brush.AccentSubtle}"
+                        HorizontalAlignment="Left">
+                  <PathIcon Width="20" Height="20"
+                            Data="{Binding IconKey, Converter={StaticResource IconKey}}"
+                            Foreground="{DynamicResource Q.Brush.Accent}" />
+                </Border>
+                <TextBlock Classes="label" FontSize="14" Text="{Binding Label}" />
+                <TextBlock Classes="caption"
+                           Text="{Binding Description}"
+                           TextWrapping="Wrap"
+                           MaxLines="2"
+                           MinHeight="32" />
+                <Border Classes="pill">
+                  <TextBlock Classes="caption tertiary" FontSize="11" Text="{Binding Milestone}" />
+                </Border>
+              </StackPanel>
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
+

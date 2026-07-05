@@ -1,0 +1,88 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Acroball.UI.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="1120" d:DesignHeight="760"
+        x:Class="Acroball.UI.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="Acroball"
+        MinWidth="860" MinHeight="560"
+        Background="{DynamicResource Q.Brush.AppBackground}"
+        WindowStartupLocation="CenterScreen">
+
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+1" Command="{Binding NavigateCommand}" CommandParameter="home" />
+    <KeyBinding Gesture="Ctrl+2" Command="{Binding NavigateCommand}" CommandParameter="merge" />
+    <KeyBinding Gesture="Ctrl+3" Command="{Binding NavigateCommand}" CommandParameter="split" />
+    <KeyBinding Gesture="Ctrl+4" Command="{Binding NavigateCommand}" CommandParameter="organize" />
+    <KeyBinding Gesture="Ctrl+5" Command="{Binding NavigateCommand}" CommandParameter="rotate" />
+    <KeyBinding Gesture="Ctrl+6" Command="{Binding NavigateCommand}" CommandParameter="extract" />
+    <KeyBinding Gesture="Ctrl+7" Command="{Binding NavigateCommand}" CommandParameter="compress" />
+    <KeyBinding Gesture="Ctrl+8" Command="{Binding NavigateCommand}" CommandParameter="protect" />
+    <KeyBinding Gesture="Ctrl+9" Command="{Binding NavigateCommand}" CommandParameter="metadata" />
+  </Window.KeyBindings>
+
+  <Grid ColumnDefinitions="240,*">
+
+    <!-- ============ Sidebar ============ -->
+    <Border Grid.Column="0"
+            Background="{DynamicResource Q.Brush.SurfaceSidebar}"
+            BorderBrush="{DynamicResource Q.Brush.Border}"
+            BorderThickness="0,0,1,0">
+      <DockPanel Margin="12,0,12,12">
+
+        <!-- App identity. On macOS the code-behind pads this row so it clears
+             the traffic lights and makes it draggable. -->
+        <Border x:Name="SidebarHeader" DockPanel.Dock="Top" Height="48" Background="Transparent">
+          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <PathIcon Width="20" Height="20"
+                      Data="{StaticResource Icon.DocumentPdf}"
+                      Foreground="{DynamicResource Q.Brush.Accent}" />
+            <TextBlock Text="Acroball" FontSize="15" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Q.Brush.TextPrimary}"
+                       VerticalAlignment="Center" />
+            <TextBlock Text="by dwdas" FontSize="11" Opacity="0.7"
+                       Foreground="{DynamicResource Q.Brush.TextSecondary}"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+        </Border>
+
+        <Button DockPanel.Dock="Bottom"
+                Classes="nav-bottom"
+                Classes.active="{Binding IsSettingsActive}"
+                Command="{Binding OpenSettingsCommand}">
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <PathIcon Width="18" Height="18" Data="{StaticResource Icon.Settings}" />
+            <TextBlock Text="Settings" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+
+        <ListBox Classes="sidebar"
+                 Margin="0,4,0,8"
+                 ItemsSource="{Binding NavItems}"
+                 SelectedItem="{Binding SelectedNavItem}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:NavItem">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <PathIcon Width="18" Height="18"
+                          Data="{Binding IconKey, Converter={StaticResource IconKey}}" />
+                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+
+      </DockPanel>
+    </Border>
+
+    <!-- ============ Content ============ -->
+    <TransitioningContentControl Grid.Column="1" Content="{Binding CurrentPage}">
+      <TransitioningContentControl.PageTransition>
+        <CrossFade Duration="0:0:0.18" />
+      </TransitioningContentControl.PageTransition>
+    </TransitioningContentControl>
+
+  </Grid>
+</Window>
+

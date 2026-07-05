@@ -1,0 +1,12 @@
+<!--
+  Non-color design tokens. Corner radii are the only ones consumed as
+  resources today; spacing and motion values are documented in
+  docs/ARCHITECTURE.md and applied inline (Avalonia transitions cannot
+  reference Duration resources cleanly).
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <CornerRadius x:Key="Q.Radius.Sm">6</CornerRadius>
+  <CornerRadius x:Key="Q.Radius.Md">8</CornerRadius>
+  <CornerRadius x:Key="Q.Radius.Lg">12</CornerRadius>
+</ResourceDictionary>

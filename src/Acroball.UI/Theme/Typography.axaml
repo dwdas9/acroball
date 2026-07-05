@@ -1,0 +1,47 @@
+<!--
+  Type scale. Inter (bundled via Avalonia.Fonts.Inter) at a compact desktop
+  ramp: 24/17/13/12. Applied through TextBlock classes; body text inherits
+  the window Foreground, so no global TextBlock Foreground setter exists here
+  (one would defeat foreground inheritance inside buttons).
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource Q.Brush.AppBackground}" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.TextPrimary}" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+
+  <Style Selector="TextBlock.h1">
+    <Setter Property="FontSize" Value="24" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.TextPrimary}" />
+  </Style>
+
+  <Style Selector="TextBlock.h2">
+    <Setter Property="FontSize" Value="17" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.TextPrimary}" />
+  </Style>
+
+  <Style Selector="TextBlock.body">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="LineHeight" Value="20" />
+  </Style>
+
+  <Style Selector="TextBlock.label">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="Medium" />
+  </Style>
+
+  <Style Selector="TextBlock.caption">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.TextSecondary}" />
+  </Style>
+
+  <Style Selector="TextBlock.tertiary">
+    <Setter Property="Foreground" Value="{DynamicResource Q.Brush.TextTertiary}" />
+  </Style>
+
+</Styles>

@@ -1,0 +1,141 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Acroball.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="880" d:DesignHeight="760"
+             x:Class="Acroball.UI.Views.MergeView"
+             x:DataType="vm:MergeViewModel">
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="32" Spacing="20" MaxWidth="980" HorizontalAlignment="Left">
+      <StackPanel Spacing="6">
+        <TextBlock Classes="h1" Text="Merge PDFs" />
+        <TextBlock Classes="caption" Text="Combine multiple PDFs into one document in the order you choose." />
+      </StackPanel>
+
+      <Border Classes="card" Padding="20" CornerRadius="16" DragDrop.AllowDrop="True" DragDrop.DragOver="OnFilesDragOver" DragDrop.Drop="OnFilesDrop">
+        <Grid RowDefinitions="Auto,Auto,*,Auto" ColumnDefinitions="*,Auto" ColumnSpacing="12" RowSpacing="12">
+          <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
+            <TextBlock Classes="label" Text="Files" />
+            <TextBlock Classes="caption" Text="Drag PDFs here or add them with the button. Use drag and drop to reorder the list." />
+          </StackPanel>
+          <Button Grid.Row="0" Grid.Column="1" Content="Add Files" Command="{Binding PickFilesCommand}" />
+
+          <TextBlock Grid.Row="1" Grid.ColumnSpan="2"
+                     Text="{Binding ValidationMessage}"
+                     Foreground="{DynamicResource Q.Brush.Danger}"
+                     TextWrapping="Wrap" />
+
+          <ListBox x:Name="FilesList"
+                   Grid.Row="2" Grid.ColumnSpan="2"
+                   MinHeight="240"
+                   ItemsSource="{Binding Files}"
+                   SelectedItem="{Binding SelectedFile}">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Border Margin="0,0,0,8"
+                        Padding="12"
+                        CornerRadius="12"
+                        Background="{DynamicResource Q.Brush.Surface}"
+                        BorderBrush="{DynamicResource Q.Brush.Border}"
+                        BorderThickness="1"
+                        DragDrop.AllowDrop="True"
+                        PointerPressed="OnFileItemPointerPressed"
+                        DragDrop.DragOver="OnFileItemDragOver"
+                        DragDrop.Drop="OnFileItemDrop">
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                    <TextBlock VerticalAlignment="Center" Text="≡" Opacity="0.5" FontSize="18" />
+                    <TextBlock Grid.Column="1" Text="{Binding}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Text="Drag to reorder" VerticalAlignment="Center" Classes="caption" Opacity="0.7" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+
+          <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
+            <Button Content="Remove" Command="{Binding RemoveSelectedFileCommand}" />
+            <Button Content="Clear all" Command="{Binding ClearFilesCommand}" />
+            <Button Content="Move Up" Command="{Binding MoveUpCommand}" />
+            <Button Content="Move Down" Command="{Binding MoveDownCommand}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="label" Text="Output" />
+          <TextBlock Classes="caption" Text="Choose an output folder, then edit the suggested file name if you want a different result." />
+
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <TextBox Grid.Column="0"
+                     Text="{Binding OutputDirectory}"
+                     PlaceholderText="Choose an output folder"
+                     IsReadOnly="True" />
+            <Button Grid.Column="1" Content="Browse folder" Command="{Binding PickOutputFolderCommand}" />
+          </Grid>
+
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <TextBox Grid.Column="0"
+                     Text="{Binding OutputFileName}"
+                     PlaceholderText="Merged.pdf" />
+            <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="caption" Text="Editable file name" />
+          </Grid>
+
+          <Border Padding="12" CornerRadius="12" Background="{DynamicResource Q.Brush.SurfaceElevated}">
+            <StackPanel Spacing="4">
+              <TextBlock Classes="caption" Text="Preview" />
+              <TextBlock Text="{Binding OutputFilePath}" TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16">
+        <StackPanel Spacing="12">
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" Spacing="12">
+            <TextBlock Classes="label" Text="Execution" VerticalAlignment="Center" />
+            <TextBlock Classes="caption" Text="{Binding ProgressMessage}" VerticalAlignment="Center" />
+          </StackPanel>
+
+          <ProgressBar Minimum="0"
+                       Maximum="1"
+                       Value="{Binding ProgressPercent}"
+                       IsVisible="{Binding IsBusy}" />
+
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <TextBlock Text="{Binding ProgressPercent, StringFormat={}{0:P0}}" Classes="caption" />
+            <TextBlock Grid.Column="1" Text="{Binding ElapsedText, StringFormat=Elapsed: {0}}" Classes="caption" HorizontalAlignment="Center" />
+            <TextBlock Grid.Column="2" Text="{Binding IsBusy, StringFormat=Busy: {0}}" Classes="caption" HorizontalAlignment="Right" />
+          </Grid>
+
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Merge" Command="{Binding ExecuteMergeCommand}" IsEnabled="{Binding CanExecute}" />
+            <Button Content="Cancel" Command="{Binding CancelExecutionCommand}" IsVisible="{Binding IsBusy}" />
+            <Button Content="Open Output Folder" Command="{Binding OpenOutputFolderCommand}" IsVisible="{Binding HasSuccessResult}" />
+            <Button Content="Merge Another" Command="{Binding MergeAnotherCommand}" IsVisible="{Binding HasSuccessResult}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16" IsVisible="{Binding HasSuccessResult}">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="label" Text="Merge complete" />
+          <TextBlock Text="{Binding LastSummary}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding OutputDirectory, StringFormat=Folder: {0}}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding OutputFilePath, StringFormat=File: {0}}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding ElapsedText, StringFormat=Time taken: {0}}" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16" IsVisible="{Binding HasFailureResult}">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="label" Text="Merge failed" />
+          <TextBlock Text="{Binding LastError}" TextWrapping="Wrap" Foreground="{DynamicResource Q.Brush.Danger}" />
+          <Button Content="Merge Another" Command="{Binding MergeAnotherCommand}" HorizontalAlignment="Left" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

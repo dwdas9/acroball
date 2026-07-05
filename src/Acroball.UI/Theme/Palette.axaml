@@ -1,0 +1,59 @@
+﻿<!--
+  Acroball palette. Every color in the app resolves through these semantic
+  brushes; no view references a raw hex value. Light = warm paper,
+  Dark = deep ink, shared indigo accent. Consumed via DynamicResource so
+  theme switches apply live.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ResourceDictionary.ThemeDictionaries>
+
+    <ResourceDictionary x:Key="Light">
+      <SolidColorBrush x:Key="Q.Brush.AppBackground" Color="#FAFAF8" />
+      <SolidColorBrush x:Key="Q.Brush.Surface" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Q.Brush.SurfaceElevated" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Q.Brush.SurfaceSidebar" Color="#F4F4F1" />
+      <SolidColorBrush x:Key="Q.Brush.Border" Color="#E7E5E1" />
+      <SolidColorBrush x:Key="Q.Brush.BorderStrong" Color="#D6D3CD" />
+      <SolidColorBrush x:Key="Q.Brush.TextPrimary" Color="#1A1915" />
+      <SolidColorBrush x:Key="Q.Brush.TextSecondary" Color="#57544C" />
+      <SolidColorBrush x:Key="Q.Brush.TextTertiary" Color="#8A867C" />
+      <SolidColorBrush x:Key="Q.Brush.Accent" Color="#5B67E8" />
+      <SolidColorBrush x:Key="Q.Brush.AccentHover" Color="#4A56D6" />
+      <SolidColorBrush x:Key="Q.Brush.AccentPressed" Color="#3F4BC4" />
+      <SolidColorBrush x:Key="Q.Brush.AccentSubtle" Color="#EBEDFC" />
+      <SolidColorBrush x:Key="Q.Brush.OnAccent" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Q.Brush.Danger" Color="#D6455D" />
+      <SolidColorBrush x:Key="Q.Brush.DangerSubtle" Color="#FBEAED" />
+      <SolidColorBrush x:Key="Q.Brush.Success" Color="#218358" />
+      <SolidColorBrush x:Key="Q.Brush.Warning" Color="#B7791F" />
+      <SolidColorBrush x:Key="Q.Brush.FocusRing" Color="#5B67E8" />
+      <SolidColorBrush x:Key="Q.Brush.HoverOverlay" Color="#0F000000" />
+    </ResourceDictionary>
+
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="Q.Brush.AppBackground" Color="#0E0F13" />
+      <SolidColorBrush x:Key="Q.Brush.Surface" Color="#16181D" />
+      <SolidColorBrush x:Key="Q.Brush.SurfaceElevated" Color="#1C1F26" />
+      <SolidColorBrush x:Key="Q.Brush.SurfaceSidebar" Color="#121318" />
+      <SolidColorBrush x:Key="Q.Brush.Border" Color="#262932" />
+      <SolidColorBrush x:Key="Q.Brush.BorderStrong" Color="#343845" />
+      <SolidColorBrush x:Key="Q.Brush.TextPrimary" Color="#F2F3F5" />
+      <SolidColorBrush x:Key="Q.Brush.TextSecondary" Color="#A6AAB5" />
+      <SolidColorBrush x:Key="Q.Brush.TextTertiary" Color="#6E7380" />
+      <SolidColorBrush x:Key="Q.Brush.Accent" Color="#6E7BFF" />
+      <SolidColorBrush x:Key="Q.Brush.AccentHover" Color="#7F8BFF" />
+      <SolidColorBrush x:Key="Q.Brush.AccentPressed" Color="#5A67F2" />
+      <SolidColorBrush x:Key="Q.Brush.AccentSubtle" Color="#23263B" />
+      <SolidColorBrush x:Key="Q.Brush.OnAccent" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Q.Brush.Danger" Color="#F26D85" />
+      <SolidColorBrush x:Key="Q.Brush.DangerSubtle" Color="#3A2028" />
+      <SolidColorBrush x:Key="Q.Brush.Success" Color="#4CC38A" />
+      <SolidColorBrush x:Key="Q.Brush.Warning" Color="#E0A93E" />
+      <SolidColorBrush x:Key="Q.Brush.FocusRing" Color="#7F8BFF" />
+      <SolidColorBrush x:Key="Q.Brush.HoverOverlay" Color="#14FFFFFF" />
+    </ResourceDictionary>
+
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>
+

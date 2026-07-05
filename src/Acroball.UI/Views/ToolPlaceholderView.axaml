@@ -1,0 +1,42 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Acroball.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="880" d:DesignHeight="760"
+             x:Class="Acroball.UI.Views.ToolPlaceholderView"
+             x:DataType="vm:ToolPlaceholderViewModel">
+
+  <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+              Spacing="14" MaxWidth="380">
+
+    <Border Width="64" Height="64" CornerRadius="32"
+            Background="{DynamicResource Q.Brush.AccentSubtle}"
+            HorizontalAlignment="Center">
+      <PathIcon Width="28" Height="28"
+                Data="{Binding IconKey, Converter={StaticResource IconKey}}"
+                Foreground="{DynamicResource Q.Brush.Accent}" />
+    </Border>
+
+    <TextBlock Classes="h2" Text="{Binding Title}" HorizontalAlignment="Center" />
+
+    <Border Classes="pill" HorizontalAlignment="Center">
+      <TextBlock Classes="caption tertiary" FontSize="11"
+                 Text="{Binding MilestoneTag, StringFormat='Planned for {0}'}" />
+    </Border>
+
+    <TextBlock Classes="body" Text="{Binding Description}"
+               TextWrapping="Wrap" TextAlignment="Center"
+               Foreground="{DynamicResource Q.Brush.TextSecondary}" />
+
+    <Button Classes="ghost" HorizontalAlignment="Center" Margin="0,8,0,0"
+            Command="{Binding GoHomeCommand}">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ChevronLeft}" />
+        <TextBlock Text="Back to Home" VerticalAlignment="Center" />
+      </StackPanel>
+    </Button>
+
+  </StackPanel>
+</UserControl>
+

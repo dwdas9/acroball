@@ -1,0 +1,49 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Acroball.UI.ViewModels"
+             xmlns:conv="using:Acroball.UI.Converters"
+             mc:Ignorable="d" d:DesignWidth="880" d:DesignHeight="760"
+             x:Class="Acroball.UI.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+
+  <UserControl.Resources>
+    <conv:EnumToBooleanConverter x:Key="EnumToBool" />
+  </UserControl.Resources>
+
+  <ScrollViewer>
+    <StackPanel Margin="32" Spacing="28" MaxWidth="640" HorizontalAlignment="Left">
+
+      <TextBlock Classes="h1" Text="Settings" />
+
+      <StackPanel Spacing="12">
+        <TextBlock Classes="h2" Text="Appearance" />
+        <TextBlock Classes="caption" Text="Theme" />
+        <Border Background="{DynamicResource Q.Brush.SurfaceSidebar}"
+                CornerRadius="9" Padding="3"
+                HorizontalAlignment="Left">
+          <StackPanel Orientation="Horizontal">
+            <RadioButton Classes="segment" GroupName="Theme" Content="System"
+                         IsChecked="{Binding SelectedTheme, Converter={StaticResource EnumToBool}, ConverterParameter=System, Mode=TwoWay}" />
+            <RadioButton Classes="segment" GroupName="Theme" Content="Light"
+                         IsChecked="{Binding SelectedTheme, Converter={StaticResource EnumToBool}, ConverterParameter=Light, Mode=TwoWay}" />
+            <RadioButton Classes="segment" GroupName="Theme" Content="Dark"
+                         IsChecked="{Binding SelectedTheme, Converter={StaticResource EnumToBool}, ConverterParameter=Dark, Mode=TwoWay}" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+
+      <StackPanel Spacing="12">
+        <TextBlock Classes="h2" Text="About" />
+        <StackPanel Spacing="4">
+          <TextBlock Classes="label" Text="Acroball" />
+          <TextBlock Classes="caption" Text="{Binding AppVersion, StringFormat='Version {0}'}" />
+          <TextBlock Classes="caption" Text="Free and open source, MIT licensed." />
+        </StackPanel>
+      </StackPanel>
+
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
+
