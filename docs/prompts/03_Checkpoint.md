@@ -1,13 +1,23 @@
 # Checkpoint — Session End Protocol
 
 Trigger this when the session is ending, regardless of whether the milestone
-is complete.
+is complete. **Also trigger it periodically mid-session** — roughly every few
+tool-call-heavy exchanges during any session with multiple non-trivial file
+edits — per `CLAUDE.md`'s "During a long session" rule. This is a resilience
+measure: if the session stops abruptly (crash, out of tokens, dropped
+connection), the next session should never have to reconstruct more than a
+few minutes of lost progress from git diffs alone.
 
 ---
 
-Development for this session is ending now. **Do not implement any further
-functionality.** Do not start a new task. Do not touch any file other than
-the one this protocol names below.
+A mid-session checkpoint follows the exact same rules and output below as an
+end-of-session one. The only difference: at true session end, treat this as
+the final action and stop; mid-session, write the checkpoint and then
+continue the work in progress.
+
+Development for this checkpoint is being captured now. **Do not implement any
+further functionality until the checkpoint file is written.** Do not touch
+any file other than the one this protocol names below.
 
 Your only remaining job is to overwrite
 `docs/development/CURRENT_STATE.md` in full, so the next session can resume
@@ -64,5 +74,7 @@ additional context beyond this document, write "None."}}
   (that becomes part of **Current Blockers**).
 - Re-read the Context Dependency Index once you've written it and verify
   every path actually exists in the repository right now.
-- Output nothing else. No summary, no changelog entry, no narrative recap —
-  the state file above is the entire deliverable.
+- Don't narrate the checkpoint itself — no summary, changelog entry, or
+  recap of it; the state file above is the entire deliverable for this step.
+  At true session end, that also ends the turn. Mid-session, just resume the
+  task afterward as normal.

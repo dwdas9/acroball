@@ -13,6 +13,17 @@ onboarding or narrative documentation. Full rationale: `docs/prompts/README.md`.
 3. Report back the current milestone, next task, and files ingested, per
    `02_Initialize.md`, then proceed.
 
+## During a long session
+
+Don't wait for the end of the session to checkpoint. Re-run the
+`docs/prompts/03_Checkpoint.md` protocol periodically during any session
+involving multiple non-trivial file edits — roughly every few tool-call-heavy
+exchanges, or after finishing a meaningful chunk of a multi-step task — so
+that an abrupt stop (crash, running out of tokens, connection drop) never
+loses more than a few minutes of progress. A mid-session checkpoint follows
+the exact same rules and output structure as an end-of-session one; only the
+trigger differs. Do not ask permission first — just do it and continue.
+
 ## At the end of a session
 
 Run `/checkpoint` (or, if asked to end/wrap up the session without it being
