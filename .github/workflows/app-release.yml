@@ -1,0 +1,128 @@
+name: App Release
+
+on:
+  push:
+    tags:
+      - 'app-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version without the app-v prefix, for example 0.5.0'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-release-assets:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            executable: Acroball.exe
+            archive_name: acroball-win-x64.zip
+            archive_type: zip
+          - os: macos-latest
+            rid: osx-x64
+            executable: Acroball
+            archive_name: acroball-osx-x64.tar.gz
+            archive_type: tar.gz
+          - os: macos-latest
+            rid: osx-arm64
+            executable: Acroball
+            archive_name: acroball-osx-arm64.tar.gz
+            archive_type: tar.gz
+          - os: ubuntu-latest
+            rid: linux-x64
+            executable: Acroball
+            archive_name: acroball-linux-x64.tar.gz
+            archive_type: tar.gz
+          - os: ubuntu-latest
+            rid: linux-arm64
+            executable: Acroball
+            archive_name: acroball-linux-arm64.tar.gz
+            archive_type: tar.gz
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish self-contained single-file build
+        run: >-
+          dotnet publish src/Acroball.Desktop
+          -c Release
+          -r ${{ matrix.rid }}
+          --self-contained true
+          /p:PublishSingleFile=true
+          /p:IncludeNativeLibrariesForSelfExtract=true
+
+      - name: Verify executable exists
+        shell: pwsh
+        run: |
+          $exePath = "src/Acroball.Desktop/bin/Release/net10.0/${{ matrix.rid }}/publish/${{ matrix.executable }}"
+          if (-not (Test-Path $exePath)) {
+            throw "Expected executable not found: $exePath"
+          }
+
+      - name: Archive Windows release
+        if: matrix.archive_type == 'zip'
+        shell: pwsh
+        run: |
+          $publishDir = Resolve-Path "src/Acroball.Desktop/bin/Release/net10.0/${{ matrix.rid }}/publish"
+          $archivePath = Join-Path $pwd "${{ matrix.archive_name }}"
+          if (Test-Path $archivePath) {
+            Remove-Item $archivePath -Force
+          }
+          Compress-Archive -Path (Join-Path $publishDir '*') -DestinationPath $archivePath
+
+      - name: Archive Unix release
+        if: matrix.archive_type == 'tar.gz'
+        run: |
+          tar -czf "${{ matrix.archive_name }}" -C "src/Acroball.Desktop/bin/Release/net10.0/${{ matrix.rid }}/publish" .
+
+      - name: Upload release asset bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.rid }}-bundle
+          path: ${{ matrix.archive_name }}
+          if-no-files-found: error
+
+  publish-github-release:
+    needs: build-release-assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: '*-bundle'
+          merge-multiple: true
+
+      - name: Resolve release tag
+        id: release_tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=app-v${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "name=Acroball ${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "name=Acroball ${GITHUB_REF_NAME#app-v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          name: ${{ steps.release_tag.outputs.name }}
+          generate_release_notes: true
+          files: dist/*
