@@ -39,6 +39,7 @@ public sealed class PageFactory
         "extract" => _services.GetRequiredService<ExtractViewModel>(),
         "rotate" => _services.GetRequiredService<RotateViewModel>(),
         "metadata" => _services.GetRequiredService<MetadataViewModel>(),
+        "protect" => _services.GetRequiredService<ProtectViewModel>(),
         _ => new ToolPlaceholderViewModel(ToolCatalog.GetById(pageId)),
     };
 }

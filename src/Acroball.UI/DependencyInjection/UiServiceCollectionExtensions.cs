@@ -24,6 +24,7 @@ public static class UiServiceCollectionExtensions
         services.AddTransient<ExtractViewModel>();
         services.AddTransient<RotateViewModel>();
         services.AddTransient<MetadataViewModel>();
+        services.AddTransient<ProtectViewModel>();
 
         return services;
     }

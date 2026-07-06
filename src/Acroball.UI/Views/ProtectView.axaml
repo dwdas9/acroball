@@ -1,0 +1,178 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Acroball.UI.ViewModels"
+             xmlns:conv="using:Acroball.UI.Converters"
+             mc:Ignorable="d" d:DesignWidth="880" d:DesignHeight="900"
+             x:Class="Acroball.UI.Views.ProtectView"
+             x:DataType="vm:ProtectViewModel">
+
+  <UserControl.Resources>
+    <conv:EnumToBooleanConverter x:Key="EnumToBool" />
+  </UserControl.Resources>
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="32" Spacing="20" MaxWidth="980" HorizontalAlignment="Left">
+      <StackPanel Spacing="6">
+        <TextBlock Classes="h1" Text="Protect PDF" />
+        <TextBlock Classes="caption" Text="Add or remove passwords and set permissions." />
+      </StackPanel>
+
+      <Border Classes="card" Padding="20" CornerRadius="16" DragDrop.AllowDrop="True" DragDrop.DragOver="OnInputDragOver" DragDrop.Drop="OnInputDrop">
+        <StackPanel Spacing="12">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <StackPanel Grid.Column="0" Spacing="4">
+              <TextBlock Classes="label" Text="File" />
+              <TextBlock Classes="caption" Text="Drag a PDF here or add it with the button." />
+            </StackPanel>
+            <Button Grid.Column="1" Content="Add File" Command="{Binding PickInputFileCommand}" />
+          </Grid>
+
+          <TextBlock Text="{Binding InputFile}" TextWrapping="Wrap" />
+
+          <TextBlock Text="{Binding ValidationMessage}"
+                     Foreground="{DynamicResource Q.Brush.Danger}"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="label" Text="Mode" />
+          <Border Background="{DynamicResource Q.Brush.SurfaceSidebar}"
+                  CornerRadius="9" Padding="3"
+                  HorizontalAlignment="Left">
+            <StackPanel Orientation="Horizontal">
+              <RadioButton Classes="segment" GroupName="ProtectMode" Content="Add Password"
+                           IsChecked="{Binding Mode, Converter={StaticResource EnumToBool}, ConverterParameter=Encrypt, Mode=TwoWay}" />
+              <RadioButton Classes="segment" GroupName="ProtectMode" Content="Remove Password"
+                           IsChecked="{Binding Mode, Converter={StaticResource EnumToBool}, ConverterParameter=Decrypt, Mode=TwoWay}" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="label" Text="Current password" />
+          <TextBlock Classes="caption" Text="Only needed if the file is already password-protected." />
+          <TextBox Text="{Binding CurrentPassword}" PasswordChar="•" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16" IsVisible="{Binding IsEncryptMode}">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="label" Text="New passwords" />
+
+          <StackPanel Spacing="4">
+            <TextBlock Classes="caption" Text="User password (required to open the file)" />
+            <TextBox Text="{Binding UserPassword}" PasswordChar="•" />
+          </StackPanel>
+
+          <StackPanel Spacing="4">
+            <TextBlock Classes="caption" Text="Owner password (required to change permissions)" />
+            <TextBox Text="{Binding OwnerPassword}" PasswordChar="•" />
+          </StackPanel>
+
+          <TextBlock Classes="label" Text="Strength" />
+          <Border Background="{DynamicResource Q.Brush.SurfaceSidebar}"
+                  CornerRadius="9" Padding="3"
+                  HorizontalAlignment="Left">
+            <StackPanel Orientation="Horizontal">
+              <RadioButton Classes="segment" GroupName="Strength" Content="Standard (AES-128)"
+                           IsChecked="{Binding Strength, Converter={StaticResource EnumToBool}, ConverterParameter=Aes128, Mode=TwoWay}" />
+              <RadioButton Classes="segment" GroupName="Strength" Content="Strongest (AES-256)"
+                           IsChecked="{Binding Strength, Converter={StaticResource EnumToBool}, ConverterParameter=Aes256, Mode=TwoWay}" />
+            </StackPanel>
+          </Border>
+
+          <TextBlock Classes="label" Text="Permissions" />
+          <StackPanel Spacing="6">
+            <CheckBox Content="Allow printing" IsChecked="{Binding AllowPrint}" />
+            <CheckBox Content="Allow editing" IsChecked="{Binding AllowModifyContents}" />
+            <CheckBox Content="Allow copying content" IsChecked="{Binding AllowCopyContents}" />
+            <CheckBox Content="Allow annotations" IsChecked="{Binding AllowAnnotate}" />
+            <CheckBox Content="Allow filling forms" IsChecked="{Binding AllowFillForms}" />
+            <CheckBox Content="Allow page assembly" IsChecked="{Binding AllowAssembleDocument}" />
+            <CheckBox Content="Allow high-quality printing" IsChecked="{Binding AllowPrintHighQuality}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="label" Text="Output" />
+          <TextBlock Classes="caption" Text="Choose an output folder, then edit the suggested file name if you want a different result." />
+
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <TextBox Grid.Column="0"
+                     Text="{Binding OutputDirectory}"
+                     PlaceholderText="Choose an output folder"
+                     IsReadOnly="True" />
+            <Button Grid.Column="1" Content="Browse folder" Command="{Binding PickOutputFolderCommand}" />
+          </Grid>
+
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <TextBox Grid.Column="0"
+                     Text="{Binding OutputFileName}"
+                     PlaceholderText="Protected.pdf" />
+            <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="caption" Text="Editable file name" />
+          </Grid>
+
+          <Border Padding="12" CornerRadius="12" Background="{DynamicResource Q.Brush.SurfaceElevated}">
+            <StackPanel Spacing="4">
+              <TextBlock Classes="caption" Text="Preview" />
+              <TextBlock Text="{Binding OutputFilePath}" TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16">
+        <StackPanel Spacing="12">
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" Spacing="12">
+            <TextBlock Classes="label" Text="Execution" VerticalAlignment="Center" />
+            <TextBlock Classes="caption" Text="{Binding ProgressMessage}" VerticalAlignment="Center" />
+          </StackPanel>
+
+          <ProgressBar Minimum="0"
+                       Maximum="1"
+                       Value="{Binding ProgressPercent}"
+                       IsVisible="{Binding IsBusy}" />
+
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <TextBlock Text="{Binding ProgressPercent, StringFormat={}{0:P0}}" Classes="caption" />
+            <TextBlock Grid.Column="1" Text="{Binding ElapsedText, StringFormat=Elapsed: {0}}" Classes="caption" HorizontalAlignment="Center" />
+            <TextBlock Grid.Column="2" Text="{Binding IsBusy, StringFormat=Busy: {0}}" Classes="caption" HorizontalAlignment="Right" />
+          </Grid>
+
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="{Binding ExecuteButtonLabel}" Command="{Binding ExecuteProtectCommand}" IsEnabled="{Binding CanExecute}" />
+            <Button Content="Cancel" Command="{Binding CancelExecutionCommand}" IsVisible="{Binding IsBusy}" />
+            <Button Content="Open Output Folder" Command="{Binding OpenOutputFolderCommand}" IsVisible="{Binding HasSuccessResult}" />
+            <Button Content="Protect Another" Command="{Binding ProtectAnotherCommand}" IsVisible="{Binding HasSuccessResult}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16" IsVisible="{Binding HasSuccessResult}">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="label" Text="Done" />
+          <TextBlock Text="{Binding LastSummary}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding OutputDirectory, StringFormat=Folder: {0}}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding OutputFilePath, StringFormat=File: {0}}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding ElapsedText, StringFormat=Time taken: {0}}" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16" IsVisible="{Binding HasFailureResult}">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="label" Text="Failed" />
+          <TextBlock Text="{Binding LastError}" TextWrapping="Wrap" Foreground="{DynamicResource Q.Brush.Danger}" />
+          <Button Content="Protect Another" Command="{Binding ProtectAnotherCommand}" HorizontalAlignment="Left" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -31,8 +31,11 @@ namespace Acroball.Infrastructure.Pdf;
 /// read-only (PDFsharp stamps it) and is ignored on write.
 /// </para>
 /// <para>
-/// Compose, Encrypt, Decrypt and Compress throw
-/// <see cref="NotSupportedException"/> until their milestones (M3/M4) land.
+/// Compose and Compress throw <see cref="NotSupportedException"/> until
+/// their milestones land. Encrypt/Decrypt use PDFsharp's built-in AES-128/256
+/// security handler (<see cref="PdfDocument.SecurityHandler"/>); note that
+/// <see cref="PdfPermissions.ExtractForAccessibility"/> has no equivalent in
+/// PDFsharp 6.2.4 and is silently unmappable on encrypt.
 /// </para>
 /// </remarks>
 public sealed class PdfSharpEngine : IPdfEngine
@@ -329,14 +332,56 @@ public sealed class PdfSharpEngine : IPdfEngine
         EncryptRequest request,
         IProgress<OperationProgress>? progress = null,
         CancellationToken cancellationToken = default)
-        => throw new NotSupportedException("Protect ships in Milestone 4.");
+        => Task.Run(
+            () =>
+            {
+                using var document = Open(request.InputFile, request.CurrentPassword, PdfDocumentOpenMode.Modify);
+
+                document.SecurityHandler.UserPassword = request.Options.UserPassword ?? string.Empty;
+                document.SecurityHandler.OwnerPassword = request.Options.OwnerPassword ?? string.Empty;
+
+                if (request.Options.Strength == EncryptionStrength.Aes256)
+                {
+                    document.SecurityHandler.SetEncryptionToV5(true);
+                }
+                else
+                {
+                    document.SecurityHandler.SetEncryptionToV4UsingAES(true);
+                }
+
+                var permissions = request.Options.Permissions;
+                document.SecuritySettings.PermitPrint = permissions.HasFlag(PdfPermissions.Print);
+                document.SecuritySettings.PermitModifyDocument = permissions.HasFlag(PdfPermissions.ModifyContents);
+                document.SecuritySettings.PermitExtractContent = permissions.HasFlag(PdfPermissions.CopyContents);
+                document.SecuritySettings.PermitAnnotations = permissions.HasFlag(PdfPermissions.Annotate);
+                document.SecuritySettings.PermitFormsFill = permissions.HasFlag(PdfPermissions.FillForms);
+                document.SecuritySettings.PermitAssembleDocument = permissions.HasFlag(PdfPermissions.AssembleDocument);
+                document.SecuritySettings.PermitFullQualityPrint = permissions.HasFlag(PdfPermissions.PrintHighQuality);
+                // PdfPermissions.ExtractForAccessibility has no PDFsharp 6.2.4 equivalent
+                // (public or internal) — silently unmappable, not settable here.
+
+                SaveAtomic(document, request.OutputFile, cancellationToken);
+                progress?.Report(new OperationProgress(1.0, "Done"));
+                _logger.LogInformation("Encrypted {Input} into {Output}", request.InputFile, request.OutputFile);
+            },
+            cancellationToken);
 
     /// <inheritdoc />
     public Task DecryptAsync(
         DecryptRequest request,
         IProgress<OperationProgress>? progress = null,
         CancellationToken cancellationToken = default)
-        => throw new NotSupportedException("Protect ships in Milestone 4.");
+        => Task.Run(
+            () =>
+            {
+                using var document = Open(request.InputFile, request.Password, PdfDocumentOpenMode.Modify);
+                document.SecurityHandler.SetEncryptionToNoneAndResetPasswords();
+
+                SaveAtomic(document, request.OutputFile, cancellationToken);
+                progress?.Report(new OperationProgress(1.0, "Done"));
+                _logger.LogInformation("Decrypted {Input} into {Output}", request.InputFile, request.OutputFile);
+            },
+            cancellationToken);
 
     /// <inheritdoc />
     public Task CompressAsync(

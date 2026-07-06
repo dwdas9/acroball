@@ -337,5 +337,97 @@ public class PdfSharpEngineTests : IDisposable
     public async Task Missing_file_throws_file_not_found()
         => await Assert.ThrowsAsync<FileNotFoundException>(
             () => _engine.InspectAsync(P("nope.pdf"), cancellationToken: TestContext.Current.CancellationToken));
+
+    // ======================== encrypt / decrypt ========================
+
+    [Fact]
+    public async Task Encrypt_sets_password_and_document_opens_with_it()
+    {
+        var source = CreateFixture("plain.pdf", 2);
+        var output = P("locked.pdf");
+
+        await _engine.EncryptAsync(
+            new EncryptRequest(source, output, new EncryptionOptions("hunter2", null)),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var info = await _engine.InspectAsync(output, "hunter2", TestContext.Current.CancellationToken);
+        Assert.True(info.IsEncrypted);
+
+        await Assert.ThrowsAsync<InvalidPdfPasswordException>(
+            () => _engine.InspectAsync(output, cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidPdfPasswordException>(
+            () => _engine.InspectAsync(output, "wrong", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Encrypt_applies_permission_flags()
+    {
+        var source = CreateFixture("plain.pdf", 1);
+        var output = P("locked.pdf");
+        var permissions = PdfPermissions.Print | PdfPermissions.CopyContents;
+
+        await _engine.EncryptAsync(
+            new EncryptRequest(source, output, new EncryptionOptions("hunter2", null, permissions)),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        using var reopened = PdfSharp.Pdf.IO.PdfReader.Open(output, "hunter2", PdfSharp.Pdf.IO.PdfDocumentOpenMode.Modify);
+        Assert.True(reopened.SecuritySettings.PermitPrint);
+        Assert.True(reopened.SecuritySettings.PermitExtractContent);
+        Assert.False(reopened.SecuritySettings.PermitModifyDocument);
+        Assert.False(reopened.SecuritySettings.PermitAnnotations);
+        Assert.False(reopened.SecuritySettings.PermitFormsFill);
+        Assert.False(reopened.SecuritySettings.PermitAssembleDocument);
+        Assert.False(reopened.SecuritySettings.PermitFullQualityPrint);
+    }
+
+    [Fact]
+    public async Task Encrypt_v5_uses_aes256_and_v4_uses_aes128()
+    {
+        var source = CreateFixture("plain.pdf", 1);
+        var aes128Output = P("aes128.pdf");
+        var aes256Output = P("aes256.pdf");
+
+        await _engine.EncryptAsync(
+            new EncryptRequest(source, aes128Output, new EncryptionOptions("hunter2", null, Strength: EncryptionStrength.Aes128)),
+            cancellationToken: TestContext.Current.CancellationToken);
+        await _engine.EncryptAsync(
+            new EncryptRequest(source, aes256Output, new EncryptionOptions("hunter2", null, Strength: EncryptionStrength.Aes256)),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True((await _engine.InspectAsync(aes128Output, "hunter2", TestContext.Current.CancellationToken)).IsEncrypted);
+        Assert.True((await _engine.InspectAsync(aes256Output, "hunter2", TestContext.Current.CancellationToken)).IsEncrypted);
+    }
+
+    [Fact]
+    public async Task Decrypt_removes_password_and_restrictions()
+    {
+        var source = CreateEncryptedFixture("locked.pdf", 1, "hunter2");
+        var output = P("unlocked.pdf");
+
+        await _engine.DecryptAsync(
+            new DecryptRequest(source, output, "hunter2"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var info = await _engine.InspectAsync(output, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.False(info.IsEncrypted);
+    }
+
+    [Fact]
+    public async Task Encrypt_without_any_password_throws()
+    {
+        // PDFsharp itself refuses to save a document with a security handler
+        // attached but no user/owner password set ("At least a user or an
+        // owner password is required to encrypt the document."). The
+        // Application layer already enforces EncryptionOptions.HasAnyPassword
+        // before a request reaches the engine, so this is a defense-in-depth
+        // check, not a UI-reachable path.
+        var source = CreateFixture("plain.pdf", 1);
+        var output = P("nopassword.pdf");
+
+        await Assert.ThrowsAsync<PdfSharp.PdfSharpException>(
+            () => _engine.EncryptAsync(
+                new EncryptRequest(source, output, new EncryptionOptions(null, null)),
+                cancellationToken: TestContext.Current.CancellationToken));
+    }
 }
 
