@@ -20,6 +20,9 @@ public static class UiServiceCollectionExtensions
         services.AddTransient<HomeViewModel>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<MergeViewModel>();
+        services.AddTransient<SplitViewModel>();
+        services.AddTransient<ExtractViewModel>();
+        services.AddTransient<RotateViewModel>();
 
         return services;
     }
