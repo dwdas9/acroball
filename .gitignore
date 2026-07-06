@@ -9,3 +9,5 @@ publish/
 TestResults/
 *.log
 .DS_Store
+*.md
+!/README.md
