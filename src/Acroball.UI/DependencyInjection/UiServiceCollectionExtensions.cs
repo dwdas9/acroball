@@ -23,6 +23,7 @@ public static class UiServiceCollectionExtensions
         services.AddTransient<SplitViewModel>();
         services.AddTransient<ExtractViewModel>();
         services.AddTransient<RotateViewModel>();
+        services.AddTransient<MetadataViewModel>();
 
         return services;
     }
