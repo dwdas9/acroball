@@ -9,5 +9,13 @@ publish/
 TestResults/
 *.log
 .DS_Store
+
+# Markdown is ignored by default (scratch/notes files are common in src/),
+# but the project's actual documentation is tracked explicitly below.
 *.md
 !/README.md
+!/CLAUDE.md
+!/THIRD-PARTY-NOTICES.md
+!/docs/**/*.md
+!/.claude/commands/*.md
+!/.github/copilot-instructions.md
