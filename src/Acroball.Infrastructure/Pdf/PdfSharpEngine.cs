@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
+using SkiaSharp;
 using Acroball.Application.Abstractions;
 using Acroball.Application.Operations;
 using Acroball.Domain;
@@ -31,11 +32,19 @@ namespace Acroball.Infrastructure.Pdf;
 /// read-only (PDFsharp stamps it) and is ignored on write.
 /// </para>
 /// <para>
-/// Compose and Compress throw <see cref="NotSupportedException"/> until
-/// their milestones land. Encrypt/Decrypt use PDFsharp's built-in AES-128/256
-/// security handler (<see cref="PdfDocument.SecurityHandler"/>); note that
-/// <see cref="PdfPermissions.ExtractForAccessibility"/> has no equivalent in
-/// PDFsharp 6.2.4 and is silently unmappable on encrypt.
+/// Compose throws <see cref="NotSupportedException"/> until the visual
+/// organizer milestone lands. Encrypt/Decrypt use PDFsharp's built-in
+/// AES-128/256 security handler (<see cref="PdfDocument.SecurityHandler"/>);
+/// note that <see cref="PdfPermissions.ExtractForAccessibility"/> has no
+/// equivalent in PDFsharp 6.2.4 and is silently unmappable on encrypt.
+/// </para>
+/// <para>
+/// Compress always rebuilds the document page-by-page (dropping objects no
+/// longer reachable from any page) and, for <see cref="CompressionProfile.Balanced"/>
+/// and <see cref="CompressionProfile.Aggressive"/>, additionally recompresses
+/// embedded images via SkiaSharp. See ADR-0009 for exactly which images
+/// qualify (JPEG, DeviceRGB/DeviceGray, no transparency mask) and why the
+/// rest are left untouched.
 /// </para>
 /// </remarks>
 public sealed class PdfSharpEngine : IPdfEngine
@@ -388,7 +397,214 @@ public sealed class PdfSharpEngine : IPdfEngine
         CompressRequest request,
         IProgress<OperationProgress>? progress = null,
         CancellationToken cancellationToken = default)
-        => throw new NotSupportedException("Compress ships in Milestone 4.");
+        => Task.Run(
+            () =>
+            {
+                using var source = Open(request.InputFile, request.Password, PdfDocumentOpenMode.Import);
+                using var output = new PdfDocument();
+
+                var rebuildFraction = request.Profile == CompressionProfile.Lossless ? 1.0 : 0.5;
+                for (var i = 0; i < source.PageCount; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    output.AddPage(source.Pages[i]);
+                    progress?.Report(new OperationProgress(
+                        rebuildFraction * (i + 1) / source.PageCount,
+                        $"Rebuilding page {i + 1}/{source.PageCount}"));
+                }
+
+                var imagesRecompressed = 0;
+                if (request.Profile != CompressionProfile.Lossless)
+                {
+                    imagesRecompressed = RecompressImages(output, request.Profile, progress, cancellationToken);
+                }
+
+                SaveAtomic(output, request.OutputFile, cancellationToken);
+                progress?.Report(new OperationProgress(1.0, "Done"));
+                _logger.LogInformation(
+                    "Compressed {Input} into {Output} ({Profile} profile, {ImagesRecompressed} image(s) recompressed)",
+                    request.InputFile, request.OutputFile, request.Profile, imagesRecompressed);
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Recompresses qualifying images across every page (and one level of
+    /// nested Form XObjects) of <paramref name="document"/> in place. See
+    /// ADR-0009 for the qualification criteria. Returns how many images were
+    /// actually replaced with a smaller encoding.
+    /// </summary>
+    private static int RecompressImages(
+        PdfDocument document,
+        CompressionProfile profile,
+        IProgress<OperationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var (maxDimension, jpegQuality) = profile switch
+        {
+            CompressionProfile.Aggressive => (1000, 45),
+            _ => (1600, 75), // Balanced
+        };
+
+        var seen = new HashSet<PdfDictionary>();
+        var images = new List<PdfDictionary>();
+        foreach (var page in document.Pages.Cast<PdfPage>())
+        {
+            CollectImageXObjects(page.Resources, seen, images, depth: 0);
+        }
+
+        var recompressedCount = 0;
+        for (var i = 0; i < images.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (TryRecompressImage(images[i], maxDimension, jpegQuality))
+            {
+                recompressedCount++;
+            }
+
+            progress?.Report(new OperationProgress(
+                0.5 + 0.5 * (i + 1) / images.Count,
+                $"Recompressing images ({i + 1}/{images.Count})"));
+        }
+
+        return recompressedCount;
+    }
+
+    /// <summary>
+    /// Walks one resources dictionary's <c>/XObject</c> entries, collecting
+    /// image dictionaries and recursing one level into Form XObjects.
+    /// <paramref name="seen"/> both de-duplicates images shared across pages
+    /// and guards against reference cycles.
+    /// </summary>
+    private static void CollectImageXObjects(PdfDictionary resources, HashSet<PdfDictionary> seen, List<PdfDictionary> result, int depth)
+    {
+        if (depth > 4)
+        {
+            return;
+        }
+
+        var xObjects = resources.Elements.GetDictionary("/XObject");
+        if (xObjects is null)
+        {
+            return;
+        }
+
+        foreach (var key in xObjects.Elements.Keys.ToArray())
+        {
+            var xObject = xObjects.Elements.GetDictionary(key);
+            if (xObject is null || !seen.Add(xObject))
+            {
+                continue;
+            }
+
+            var subtype = xObject.Elements.GetName("/Subtype");
+            if (subtype == "/Image")
+            {
+                result.Add(xObject);
+            }
+            else if (subtype == "/Form")
+            {
+                var nestedResources = xObject.Elements.GetDictionary("/Resources");
+                if (nestedResources is not null)
+                {
+                    CollectImageXObjects(nestedResources, seen, result, depth + 1);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Recompresses one image XObject in place if it qualifies (see
+    /// ADR-0009), keeping the change only when the result is strictly
+    /// smaller. Returns whether the image was replaced.
+    /// </summary>
+    private static bool TryRecompressImage(PdfDictionary imageDict, int maxDimension, int jpegQuality)
+    {
+        if (imageDict.Elements.GetBoolean("/ImageMask")
+            || imageDict.Elements.ContainsKey("/SMask")
+            || imageDict.Elements.ContainsKey("/Mask"))
+        {
+            return false;
+        }
+
+        if (imageDict.Elements.GetName("/Filter") != "/DCTDecode")
+        {
+            return false;
+        }
+
+        var colorSpace = imageDict.Elements.GetName("/ColorSpace");
+        if (colorSpace != "/DeviceRGB" && colorSpace != "/DeviceGray")
+        {
+            return false;
+        }
+
+        var originalBytes = imageDict.Stream?.Value;
+        if (originalBytes is null || originalBytes.Length == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var bitmap = SKBitmap.Decode(originalBytes);
+            if (bitmap is null)
+            {
+                return false;
+            }
+
+            var longEdge = Math.Max(bitmap.Width, bitmap.Height);
+            var targetWidth = bitmap.Width;
+            var targetHeight = bitmap.Height;
+            if (longEdge > maxDimension)
+            {
+                var scale = (double)maxDimension / longEdge;
+                targetWidth = Math.Max(1, (int)Math.Round(bitmap.Width * scale));
+                targetHeight = Math.Max(1, (int)Math.Round(bitmap.Height * scale));
+            }
+
+            // Bgra8888 is the color type PDFsharp/Skia round-trip reliably for
+            // JPEG encode; Rgb888x fails to encode in this SkiaSharp build.
+            var targetColorType = colorSpace == "/DeviceGray" ? SKColorType.Gray8 : SKColorType.Bgra8888;
+            var targetAlpha = targetColorType == SKColorType.Gray8 ? SKAlphaType.Opaque : SKAlphaType.Premul;
+
+            var unchangedSize = targetWidth == bitmap.Width && targetHeight == bitmap.Height && bitmap.ColorType == targetColorType;
+            using var working = unchangedSize
+                ? bitmap.Copy(targetColorType)
+                : bitmap.Resize(new SKImageInfo(targetWidth, targetHeight, targetColorType, targetAlpha), new SKSamplingOptions(SKCubicResampler.CatmullRom));
+
+            if (working is null)
+            {
+                return false;
+            }
+
+            using var encodedData = working.Encode(SKEncodedImageFormat.Jpeg, jpegQuality);
+            if (encodedData is null)
+            {
+                return false;
+            }
+
+            var newBytes = encodedData.ToArray();
+            if (newBytes.Length >= originalBytes.Length)
+            {
+                return false;
+            }
+
+            imageDict.Stream!.Value = newBytes;
+            imageDict.Elements.SetInteger("/Length", newBytes.Length);
+            imageDict.Elements.SetInteger("/Width", working.Width);
+            imageDict.Elements.SetInteger("/Height", working.Height);
+            imageDict.Elements.SetInteger("/BitsPerComponent", 8);
+            imageDict.Elements.Remove("/DecodeParms");
+            imageDict.Elements.Remove("/Decode");
+            return true;
+        }
+        catch (Exception)
+        {
+            // A single malformed or unsupported image must not fail the
+            // whole compress job; leave it exactly as it was.
+            return false;
+        }
+    }
 
     // ======================== helpers ========================
 

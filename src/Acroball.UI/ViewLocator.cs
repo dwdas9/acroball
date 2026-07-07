@@ -20,6 +20,7 @@ public sealed class ViewLocator : IDataTemplate
         [typeof(SplitViewModel)] = () => new Views.SplitView(),
         [typeof(ExtractViewModel)] = () => new ExtractView(),
         [typeof(RotateViewModel)] = () => new RotateView(),
+        [typeof(CompressViewModel)] = () => new CompressView(),
         [typeof(MetadataViewModel)] = () => new MetadataView(),
         [typeof(ProtectViewModel)] = () => new ProtectView(),
         [typeof(ToolPlaceholderViewModel)] = () => new ToolPlaceholderView(),

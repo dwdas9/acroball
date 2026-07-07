@@ -42,5 +42,11 @@
       <PackageVersion Include="PDFtoImage" Version="5.2.1" />   MIT, PDFium+Skia
     -->
   </ItemGroup>
+
+  <ItemGroup Label="Image codec for Compress (ADR-0009)">
+    <!-- Already a transitive Avalonia dependency; pinned here to the same
+         version so Infrastructure's explicit reference never drifts from it. -->
+    <PackageVersion Include="SkiaSharp" Version="3.119.4" />
+  </ItemGroup>
 </Project>
 

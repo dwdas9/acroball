@@ -38,6 +38,7 @@ public sealed class PageFactory
         "split" => _services.GetRequiredService<SplitViewModel>(),
         "extract" => _services.GetRequiredService<ExtractViewModel>(),
         "rotate" => _services.GetRequiredService<RotateViewModel>(),
+        "compress" => _services.GetRequiredService<CompressViewModel>(),
         "metadata" => _services.GetRequiredService<MetadataViewModel>(),
         "protect" => _services.GetRequiredService<ProtectViewModel>(),
         _ => new ToolPlaceholderViewModel(ToolCatalog.GetById(pageId)),

@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging.Abstractions;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
+using SkiaSharp;
 using Acroball.Application.Operations;
 using Acroball.Domain;
 using Acroball.Domain.Exceptions;
@@ -61,6 +62,68 @@ public class PdfSharpEngineTests : IDisposable
 
     private string CreateEncryptedFixture(string name, int pageCount, string userPassword)
         => CreateFixture(name, pageCount, doc => doc.SecuritySettings.UserPassword = userPassword);
+
+    /// <summary>Encodes deterministic random noise so JPEG quality/size differences are real, not an artifact of flat-color content.</summary>
+    private static byte[] CreateNoiseJpeg(int width, int height, SKColorType colorType, SKAlphaType alphaType, int quality, int seed)
+    {
+        using var bitmap = new SKBitmap(new SKImageInfo(width, height, colorType, alphaType));
+        new Random(seed).NextBytes(bitmap.GetPixelSpan());
+        using var data = bitmap.Encode(SKEncodedImageFormat.Jpeg, quality);
+        return data.ToArray();
+    }
+
+    private static byte[] CreateNoisePng(int width, int height, int seed)
+    {
+        using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
+        new Random(seed).NextBytes(bitmap.GetPixelSpan());
+        using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
+    }
+
+    /// <summary>Creates a single-page PDF with one full-page embedded image.</summary>
+    private string CreateFixtureWithImage(string name, byte[] imageBytes, int pageWidth, int pageHeight)
+    {
+        var path = P(name);
+        using var document = new PdfDocument();
+        var page = document.AddPage();
+        page.Width = XUnit.FromPoint(pageWidth);
+        page.Height = XUnit.FromPoint(pageHeight);
+        using var gfx = XGraphics.FromPdfPage(page);
+        using var stream = new MemoryStream(imageBytes);
+        using var image = XImage.FromStream(stream);
+        gfx.DrawImage(image, 0, 0, pageWidth, pageHeight);
+        document.Save(path);
+        return path;
+    }
+
+    /// <summary>Reads back the first image XObject found on the first page.</summary>
+    private static (int Width, int Height, int StreamLength, string Filter) GetFirstImageInfo(string pdfPath)
+    {
+        using var document = PdfSharp.Pdf.IO.PdfReader.Open(pdfPath, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
+        foreach (var page in document.Pages.Cast<PdfPage>())
+        {
+            var xObjects = page.Resources.Elements.GetDictionary("/XObject");
+            if (xObjects is null)
+            {
+                continue;
+            }
+
+            foreach (var key in xObjects.Elements.Keys.ToArray())
+            {
+                var candidate = xObjects.Elements.GetDictionary(key);
+                if (candidate is not null && candidate.Elements.GetName("/Subtype") == "/Image")
+                {
+                    return (
+                        candidate.Elements.GetInteger("/Width"),
+                        candidate.Elements.GetInteger("/Height"),
+                        candidate.Stream?.Value?.Length ?? 0,
+                        candidate.Elements.GetName("/Filter"));
+                }
+            }
+        }
+
+        throw new InvalidOperationException($"No image XObject found in {pdfPath}.");
+    }
 
     private async Task<double[]> PageWidthsOf(string path, string? password = null)
     {
@@ -428,6 +491,107 @@ public class PdfSharpEngineTests : IDisposable
             () => _engine.EncryptAsync(
                 new EncryptRequest(source, output, new EncryptionOptions(null, null)),
                 cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    // ======================== compress ========================
+
+    [Fact]
+    public async Task Compress_lossless_preserves_page_geometry_and_leaves_images_untouched()
+    {
+        var jpeg = CreateNoiseJpeg(400, 300, SKColorType.Bgra8888, SKAlphaType.Premul, quality: 90, seed: 1);
+        var source = CreateFixtureWithImage("photo.pdf", jpeg, 400, 300);
+        var before = GetFirstImageInfo(source);
+        var output = P("lossless.pdf");
+
+        await _engine.CompressAsync(
+            new CompressRequest(source, output, CompressionProfile.Lossless),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var after = GetFirstImageInfo(output);
+        Assert.Equal(before.Width, after.Width);
+        Assert.Equal(before.Height, after.Height);
+        Assert.Equal(before.StreamLength, after.StreamLength);
+
+        var pages = await _engine.GetPagesAsync(output, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Single(pages);
+    }
+
+    [Fact]
+    public async Task Compress_balanced_downsamples_oversized_rgb_jpeg_and_shrinks_file()
+    {
+        var jpeg = CreateNoiseJpeg(2000, 1500, SKColorType.Bgra8888, SKAlphaType.Premul, quality: 95, seed: 2);
+        var source = CreateFixtureWithImage("photo.pdf", jpeg, 2000, 1500);
+        var output = P("balanced.pdf");
+
+        await _engine.CompressAsync(
+            new CompressRequest(source, output, CompressionProfile.Balanced),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var after = GetFirstImageInfo(output);
+        Assert.True(Math.Max(after.Width, after.Height) <= 1600, $"expected long edge <= 1600, was {Math.Max(after.Width, after.Height)}");
+        Assert.Equal("/DCTDecode", after.Filter);
+        Assert.True(new FileInfo(output).Length < new FileInfo(source).Length, "expected the compressed file to be smaller");
+
+        var info = await _engine.InspectAsync(output, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(1, info.PageCount);
+    }
+
+    [Fact]
+    public async Task Compress_aggressive_produces_smaller_or_equal_image_than_balanced()
+    {
+        var jpeg = CreateNoiseJpeg(2000, 1500, SKColorType.Bgra8888, SKAlphaType.Premul, quality: 95, seed: 3);
+        var balancedSource = CreateFixtureWithImage("balanced-in.pdf", jpeg, 2000, 1500);
+        var aggressiveSource = CreateFixtureWithImage("aggressive-in.pdf", jpeg, 2000, 1500);
+        var balancedOutput = P("balanced.pdf");
+        var aggressiveOutput = P("aggressive.pdf");
+
+        await _engine.CompressAsync(
+            new CompressRequest(balancedSource, balancedOutput, CompressionProfile.Balanced),
+            cancellationToken: TestContext.Current.CancellationToken);
+        await _engine.CompressAsync(
+            new CompressRequest(aggressiveSource, aggressiveOutput, CompressionProfile.Aggressive),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var balanced = GetFirstImageInfo(balancedOutput);
+        var aggressive = GetFirstImageInfo(aggressiveOutput);
+
+        Assert.True(Math.Max(aggressive.Width, aggressive.Height) <= 1000);
+        Assert.True(aggressive.StreamLength <= balanced.StreamLength);
+    }
+
+    [Fact]
+    public async Task Compress_leaves_non_jpeg_images_untouched()
+    {
+        var png = CreateNoisePng(400, 300, seed: 4);
+        var source = CreateFixtureWithImage("graphic.pdf", png, 400, 300);
+        var before = GetFirstImageInfo(source);
+        var output = P("aggressive.pdf");
+
+        await _engine.CompressAsync(
+            new CompressRequest(source, output, CompressionProfile.Aggressive),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var after = GetFirstImageInfo(output);
+        Assert.Equal(before.StreamLength, after.StreamLength);
+        Assert.NotEqual("/DCTDecode", after.Filter);
+    }
+
+    [Fact]
+    public async Task Compress_reports_monotonic_progress_ending_at_one()
+    {
+        var jpeg = CreateNoiseJpeg(800, 600, SKColorType.Bgra8888, SKAlphaType.Premul, quality: 90, seed: 5);
+        var source = CreateFixtureWithImage("photo.pdf", jpeg, 800, 600);
+        var progress = new ProgressCollector();
+
+        await _engine.CompressAsync(
+            new CompressRequest(source, P("out.pdf"), CompressionProfile.Balanced),
+            progress,
+            TestContext.Current.CancellationToken);
+
+        var fractions = progress.Reports.Select(r => r.Fraction).ToArray();
+        Assert.True(fractions.Length >= 2);
+        Assert.True(fractions.SequenceEqual(fractions.OrderBy(f => f)), "progress went backwards");
+        Assert.Equal(1.0, fractions[^1]);
     }
 }
 
