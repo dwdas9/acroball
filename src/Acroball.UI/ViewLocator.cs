@@ -19,6 +19,7 @@ public sealed class ViewLocator : IDataTemplate
         [typeof(MergeViewModel)] = () => new MergeView(),
         [typeof(SplitViewModel)] = () => new Views.SplitView(),
         [typeof(ExtractViewModel)] = () => new ExtractView(),
+        [typeof(OrganizeViewModel)] = () => new OrganizeView(),
         [typeof(RotateViewModel)] = () => new RotateView(),
         [typeof(CompressViewModel)] = () => new CompressView(),
         [typeof(MetadataViewModel)] = () => new MetadataView(),

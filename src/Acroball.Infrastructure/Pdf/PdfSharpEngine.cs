@@ -32,11 +32,13 @@ namespace Acroball.Infrastructure.Pdf;
 /// read-only (PDFsharp stamps it) and is ignored on write.
 /// </para>
 /// <para>
-/// Compose throws <see cref="NotSupportedException"/> until the visual
-/// organizer milestone lands. Encrypt/Decrypt use PDFsharp's built-in
-/// AES-128/256 security handler (<see cref="PdfDocument.SecurityHandler"/>);
-/// note that <see cref="PdfPermissions.ExtractForAccessibility"/> has no
-/// equivalent in PDFsharp 6.2.4 and is silently unmappable on encrypt.
+/// Compose assembles an explicit page list (<see cref="PageAssignment"/>),
+/// possibly spanning several source files, into one output document — the
+/// primitive behind the visual organizer's reorder/delete/rotate/cross-file
+/// moves. Encrypt/Decrypt use PDFsharp's built-in AES-128/256 security
+/// handler (<see cref="PdfDocument.SecurityHandler"/>); note that
+/// <see cref="PdfPermissions.ExtractForAccessibility"/> has no equivalent in
+/// PDFsharp 6.2.4 and is silently unmappable on encrypt.
 /// </para>
 /// <para>
 /// Compress always rebuilds the document page-by-page (dropping objects no
@@ -334,7 +336,62 @@ public sealed class PdfSharpEngine : IPdfEngine
         ComposeRequest request,
         IProgress<OperationProgress>? progress = null,
         CancellationToken cancellationToken = default)
-        => throw new NotSupportedException("Compose ships with the visual organizer in Milestone 3.");
+        => Task.Run(
+            () =>
+            {
+                if (request.Pages.Count == 0)
+                {
+                    throw new PdfOperationException("No pages were selected.");
+                }
+
+                using var output = new PdfDocument();
+                var openSources = new Dictionary<string, PdfDocument>();
+                try
+                {
+                    var pagesDone = 0;
+                    foreach (var assignment in request.Pages)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        if (!openSources.TryGetValue(assignment.SourceFile, out var source))
+                        {
+                            source = Open(assignment.SourceFile, PasswordFor(request.Passwords, assignment.SourceFile), PdfDocumentOpenMode.Import);
+                            openSources[assignment.SourceFile] = source;
+                        }
+
+                        if (assignment.SourcePageNumber < 1 || assignment.SourcePageNumber > source.PageCount)
+                        {
+                            throw new PdfOperationException(
+                                $"Page {assignment.SourcePageNumber} is beyond the last page of \"{Path.GetFileName(assignment.SourceFile)}\" ({source.PageCount}).");
+                        }
+
+                        var addedPage = output.AddPage(source.Pages[assignment.SourcePageNumber - 1]);
+                        if (assignment.RotationDelta != Rotation.None)
+                        {
+                            addedPage.Rotate = (int)NormalizeRotation(addedPage.Rotate).Add(assignment.RotationDelta);
+                        }
+
+                        pagesDone++;
+                        progress?.Report(new OperationProgress(
+                            (double)pagesDone / request.Pages.Count,
+                            $"Assembling page {pagesDone}/{request.Pages.Count}"));
+                    }
+
+                    SaveAtomic(output, request.OutputFile, cancellationToken);
+                    progress?.Report(new OperationProgress(1.0, "Done"));
+                    _logger.LogInformation(
+                        "Composed {PageCount} page(s) from {SourceCount} file(s) into {Output}",
+                        request.Pages.Count, openSources.Count, request.OutputFile);
+                }
+                finally
+                {
+                    foreach (var source in openSources.Values)
+                    {
+                        source.Dispose();
+                    }
+                }
+            },
+            cancellationToken);
 
     /// <inheritdoc />
     public Task EncryptAsync(

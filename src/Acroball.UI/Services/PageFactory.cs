@@ -37,6 +37,7 @@ public sealed class PageFactory
         "merge" => _services.GetRequiredService<MergeViewModel>(),
         "split" => _services.GetRequiredService<SplitViewModel>(),
         "extract" => _services.GetRequiredService<ExtractViewModel>(),
+        "organize" => _services.GetRequiredService<OrganizeViewModel>(),
         "rotate" => _services.GetRequiredService<RotateViewModel>(),
         "compress" => _services.GetRequiredService<CompressViewModel>(),
         "metadata" => _services.GetRequiredService<MetadataViewModel>(),

@@ -1,4 +1,5 @@
-﻿using Avalonia;
+﻿using System.Runtime.Versioning;
+using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Acroball.Desktop.Composition;
@@ -13,6 +14,9 @@ public static class Program
 
     /// <summary>Main entry point. Composes services, wires crash logging, runs the app.</summary>
     [STAThread]
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("linux")]
     public static void Main(string[] args)
     {
         _services = DesktopComposition.BuildServiceProvider();
@@ -49,6 +53,9 @@ public static class Program
     /// Avalonia bootstrap. Also invoked by the XAML previewer, which skips
     /// <see cref="Main"/> â€” hence the fallback composition.
     /// </summary>
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("linux")]
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure(() => new App(_services ?? DesktopComposition.BuildServiceProvider()))
             .UsePlatformDetect()

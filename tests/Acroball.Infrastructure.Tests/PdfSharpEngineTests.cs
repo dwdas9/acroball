@@ -593,5 +593,87 @@ public class PdfSharpEngineTests : IDisposable
         Assert.True(fractions.SequenceEqual(fractions.OrderBy(f => f)), "progress went backwards");
         Assert.Equal(1.0, fractions[^1]);
     }
+
+    // ======================== compose ========================
+
+    [Fact]
+    public async Task Compose_assembles_pages_from_multiple_files_in_explicit_order()
+    {
+        var a = CreateFixture("a.pdf", 3);
+        var b = CreateFixture("b.pdf", 2);
+        var output = P("organized.pdf");
+
+        await _engine.ComposeAsync(
+            new ComposeRequest(
+                [
+                    new PageAssignment(b, 2),
+                    new PageAssignment(a, 1),
+                    new PageAssignment(a, 1),
+                    new PageAssignment(b, 1),
+                ],
+                output),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        AssertWidths([102, 101, 101, 101], await PageWidthsOf(output));
+    }
+
+    [Fact]
+    public async Task Compose_applies_rotation_delta_per_page()
+    {
+        var a = CreateFixture("a.pdf", 2);
+        var output = P("organized.pdf");
+
+        await _engine.ComposeAsync(
+            new ComposeRequest(
+                [
+                    new PageAssignment(a, 1, Rotation.Clockwise90),
+                    new PageAssignment(a, 2),
+                ],
+                output),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var pages = await _engine.GetPagesAsync(output, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(Rotation.Clockwise90, pages[0].Rotation);
+        Assert.Equal(Rotation.None, pages[1].Rotation);
+    }
+
+    [Fact]
+    public async Task Compose_rejects_empty_page_list()
+        => await Assert.ThrowsAsync<PdfOperationException>(
+            () => _engine.ComposeAsync(
+                new ComposeRequest([], P("out.pdf")),
+                cancellationToken: TestContext.Current.CancellationToken));
+
+    [Fact]
+    public async Task Compose_out_of_range_page_throws_before_writing()
+    {
+        var a = CreateFixture("a.pdf", 2);
+        var output = P("organized.pdf");
+
+        await Assert.ThrowsAsync<PdfOperationException>(
+            () => _engine.ComposeAsync(
+                new ComposeRequest([new PageAssignment(a, 9)], output),
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.False(File.Exists(output));
+    }
+
+    [Fact]
+    public async Task Compose_uses_per_source_passwords()
+    {
+        var locked = CreateEncryptedFixture("locked.pdf", 1, "hunter2");
+        var output = P("organized.pdf");
+
+        await _engine.ComposeAsync(
+            new ComposeRequest(
+                [new PageAssignment(locked, 1)],
+                output,
+                new Dictionary<string, string> { [locked] = "hunter2" }),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var info = await _engine.InspectAsync(output, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(1, info.PageCount);
+        Assert.False(info.IsEncrypted);
+    }
 }
 

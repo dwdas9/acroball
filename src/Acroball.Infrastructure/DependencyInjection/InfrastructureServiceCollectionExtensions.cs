@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using System.Runtime.Versioning;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Acroball.Application.Abstractions;
 using Acroball.Application.Jobs;
@@ -23,6 +24,9 @@ public static class InfrastructureServiceCollectionExtensions
     /// Data paths to use; defaults to <see cref="AppPaths.CreateDefault"/>.
     /// Injectable for tests.
     /// </param>
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("linux")]
     public static IServiceCollection AddAcroballInfrastructure(
         this IServiceCollection services,
         AppPaths? paths = null)
@@ -51,7 +55,8 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IPdfEngine, PdfSharpEngine>();
         services.AddSingleton<IJobExecutor, JobRunner>();
 
-        // Milestone 3 registers IPdfRenderService (PDFium via PDFtoImage).
+        // Serializes native PDFium calls internally; safe as a singleton (ADR-0002, ADR-0010).
+        services.AddSingleton<IPdfRenderService, PdfRenderService>();
 
         return services;
     }

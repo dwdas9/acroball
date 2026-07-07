@@ -38,9 +38,7 @@
 
   <ItemGroup Label="PDF engine (ADR-0002)">
     <PackageVersion Include="PDFsharp" Version="6.2.4" />
-    <!-- Reserved for Milestone 3 rendering:
-      <PackageVersion Include="PDFtoImage" Version="5.2.1" />   MIT, PDFium+Skia
-    -->
+    <PackageVersion Include="PDFtoImage" Version="5.2.1" />
   </ItemGroup>
 
   <ItemGroup Label="Image codec for Compress (ADR-0009)">

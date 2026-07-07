@@ -22,6 +22,7 @@ public static class UiServiceCollectionExtensions
         services.AddTransient<MergeViewModel>();
         services.AddTransient<SplitViewModel>();
         services.AddTransient<ExtractViewModel>();
+        services.AddTransient<OrganizeViewModel>();
         services.AddTransient<RotateViewModel>();
         services.AddTransient<CompressViewModel>();
         services.AddTransient<MetadataViewModel>();
