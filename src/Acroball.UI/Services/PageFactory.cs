@@ -34,12 +34,16 @@ public sealed class PageFactory
     {
         PageIds.Home => _services.GetRequiredService<HomeViewModel>(),
         PageIds.Settings => _services.GetRequiredService<SettingsViewModel>(),
+        "viewer" => _services.GetRequiredService<ViewerViewModel>(),
         "merge" => _services.GetRequiredService<MergeViewModel>(),
         "split" => _services.GetRequiredService<SplitViewModel>(),
         "extract" => _services.GetRequiredService<ExtractViewModel>(),
+        "organize" => _services.GetRequiredService<OrganizeViewModel>(),
         "rotate" => _services.GetRequiredService<RotateViewModel>(),
+        "compress" => _services.GetRequiredService<CompressViewModel>(),
         "metadata" => _services.GetRequiredService<MetadataViewModel>(),
         "protect" => _services.GetRequiredService<ProtectViewModel>(),
+        "fill-form" => _services.GetRequiredService<FormViewModel>(),
         _ => new ToolPlaceholderViewModel(ToolCatalog.GetById(pageId)),
     };
 }

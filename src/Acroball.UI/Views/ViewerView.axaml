@@ -1,0 +1,186 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Acroball.UI.ViewModels"
+             xmlns:ann="using:Acroball.Domain.Annotations"
+             xmlns:conv="using:Acroball.UI.Converters"
+             mc:Ignorable="d" d:DesignWidth="1040" d:DesignHeight="820"
+             x:Class="Acroball.UI.Views.ViewerView"
+             x:DataType="vm:ViewerViewModel">
+
+  <UserControl.Resources>
+    <conv:AnnotationColorToBrushConverter x:Key="AnnotationColorBrush" />
+  </UserControl.Resources>
+
+  <Grid RowDefinitions="Auto,Auto,Auto,*" Margin="32,32,32,0">
+
+    <StackPanel Grid.Row="0" Spacing="6" Margin="0,0,0,20">
+      <TextBlock Classes="h1" Text="Viewer" />
+      <TextBlock Classes="caption" Text="Browse a PDF's pages in a continuous scroll, and mark it up." />
+    </StackPanel>
+
+    <Border Grid.Row="1" Classes="card" Padding="20" CornerRadius="16" Margin="0,0,0,20">
+      <StackPanel Spacing="12">
+        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+          <StackPanel Grid.Column="0" Spacing="4">
+            <TextBlock Classes="label" Text="{Binding CurrentFileName}" IsVisible="{Binding HasDocument}" />
+            <TextBlock Classes="label" Text="No document open" IsVisible="{Binding !HasDocument}" />
+            <TextBlock Classes="caption" Text="{Binding PageCountCaption}" />
+          </StackPanel>
+          <Button Grid.Column="1" Content="Open File" Command="{Binding PickFileCommand}" />
+          <Button Grid.Column="2" Content="Close" Command="{Binding CloseDocumentCommand}" IsVisible="{Binding HasDocument}" />
+        </Grid>
+
+        <TextBlock Text="{Binding OpenFileError}"
+                   Foreground="{DynamicResource Q.Brush.Danger}"
+                   TextWrapping="Wrap" />
+
+        <Border Padding="16" CornerRadius="12"
+                Background="{DynamicResource Q.Brush.SurfaceElevated}"
+                IsVisible="{Binding HasPendingPassword}">
+          <StackPanel Spacing="8">
+            <TextBlock Classes="label" Text="{Binding PendingPasswordFileName, StringFormat=Password needed for {0}}" />
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+              <TextBox Grid.Column="0" Text="{Binding PendingPasswordInput}" PasswordChar="•" PlaceholderText="Password" />
+              <Button Grid.Column="1" Content="Unlock" Command="{Binding SubmitPendingPasswordCommand}" />
+              <Button Grid.Column="2" Content="Cancel" Command="{Binding CancelPendingPasswordCommand}" />
+            </Grid>
+            <TextBlock Text="{Binding PendingPasswordError}"
+                       Foreground="{DynamicResource Q.Brush.Danger}" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="2" Classes="card" Padding="16" CornerRadius="16" Margin="0,0,0,20" IsVisible="{Binding HasDocument}">
+      <StackPanel Orientation="Horizontal" Spacing="20">
+
+        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+          <TextBlock Classes="caption" Text="Tool:" VerticalAlignment="Center" Margin="0,0,4,0" />
+          <Button Content="Select" Command="{Binding SelectNoneToolCommand}" />
+          <Button Content="Highlight" Command="{Binding SelectHighlightToolCommand}" />
+          <Button Content="Text" Command="{Binding SelectFreeTextToolCommand}" />
+          <Button Content="Ink" Command="{Binding SelectInkToolCommand}" />
+          <Button Content="Square" Command="{Binding SelectSquareToolCommand}" />
+          <TextBlock Classes="caption" Text="{Binding SelectedAnnotationTool, TargetNullValue=none}" Margin="8,0,0,0" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+          <TextBlock Classes="caption" Text="Color:" VerticalAlignment="Center" Margin="0,0,4,0" />
+          <ItemsControl ItemsSource="{x:Static vm:ViewerViewModel.AvailableColors}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="4" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="ann:AnnotationColor">
+                <Button Width="22" Height="22" Padding="0" CornerRadius="11"
+                        Background="{Binding Converter={StaticResource AnnotationColorBrush}}"
+                        Command="{Binding $parent[ItemsControl].((vm:ViewerViewModel)DataContext).SelectColorCommand}"
+                        CommandParameter="{Binding}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+
+        <Button Content="Save Annotations" Command="{Binding SaveAnnotationsCommand}" IsEnabled="{Binding HasPendingAnnotations}" VerticalAlignment="Center" />
+
+        <TextBlock Text="{Binding AnnotationsSaveMessage}" TextWrapping="Wrap" VerticalAlignment="Center"
+                   Classes="caption" />
+      </StackPanel>
+    </Border>
+
+    <Grid Grid.Row="3" ColumnDefinitions="Auto,*">
+
+      <Border Grid.Column="0" Width="220" Margin="0,0,16,32"
+              IsVisible="{Binding HasOutline}"
+              Classes="card" Padding="12" CornerRadius="16">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="8">
+            <TextBlock Classes="label" Text="Bookmarks" />
+            <TreeView x:Name="OutlineTree"
+                      Background="Transparent"
+                      ItemsSource="{Binding Outline}"
+                      SelectionChanged="OnOutlineSelectionChanged">
+              <TreeView.ItemTemplate>
+                <TreeDataTemplate ItemsSource="{Binding Children}">
+                  <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
+                </TreeDataTemplate>
+              </TreeView.ItemTemplate>
+            </TreeView>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+
+      <ListBox x:Name="PagesList"
+               Grid.Column="1"
+               Margin="0,0,0,32"
+               Background="Transparent"
+               ItemsSource="{Binding Pages}"
+               ContainerPrepared="OnPageContainerPrepared"
+               ContainerClearing="OnPageContainerClearing">
+        <ListBox.ItemsPanel>
+          <ItemsPanelTemplate>
+            <VirtualizingStackPanel Orientation="Vertical" />
+          </ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:ViewerPageViewModel">
+            <StackPanel Spacing="6" Margin="0,0,0,16" HorizontalAlignment="Center">
+              <Border Width="900" Height="{Binding PlaceholderHeightPx}"
+                      Background="{DynamicResource Q.Brush.SurfaceSidebar}"
+                      BorderBrush="{DynamicResource Q.Brush.Border}"
+                      BorderThickness="1" CornerRadius="4"
+                      ClipToBounds="True">
+                <Panel>
+                  <Image Source="{Binding RenderedImage}" Stretch="Uniform" />
+                  <TextBlock Text="Loading…" IsVisible="{Binding IsLoadingImage}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             Classes="caption" />
+                  <TextBlock Text="{Binding RenderError}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             Classes="caption" Opacity="0.7" />
+                  <Canvas Background="Transparent"
+                          PointerPressed="OnPageCanvasPointerPressed"
+                          PointerMoved="OnPageCanvasPointerMoved"
+                          PointerReleased="OnPageCanvasPointerReleased">
+                    <ItemsControl ItemsSource="{Binding PreviewShapes}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <Canvas />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AnnotationPreviewShape">
+                          <Panel Canvas.Left="{Binding Left}" Canvas.Top="{Binding Top}">
+                            <Border IsVisible="{Binding IsBox}"
+                                    Width="{Binding Width}" Height="{Binding Height}"
+                                    BorderBrush="{Binding Stroke}" BorderThickness="2"
+                                    Background="{Binding Fill}">
+                              <TextBlock Text="{Binding Text}" IsVisible="{Binding IsFreeText}"
+                                         Margin="4" FontSize="12" TextWrapping="Wrap"
+                                         Foreground="{Binding Stroke}" />
+                            </Border>
+                            <Polyline IsVisible="{Binding IsPolyline}"
+                                      Points="{Binding Points}"
+                                      Stroke="{Binding Stroke}" StrokeThickness="3"
+                                      StrokeLineCap="Round" StrokeJoin="Round" />
+                          </Panel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </Canvas>
+                </Panel>
+              </Border>
+              <TextBlock Text="{Binding PageNumber}" HorizontalAlignment="Center" Classes="caption" />
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+    </Grid>
+
+  </Grid>
+</UserControl>

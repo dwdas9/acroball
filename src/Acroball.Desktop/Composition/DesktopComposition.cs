@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using System.Runtime.Versioning;
+using Microsoft.Extensions.DependencyInjection;
 using Acroball.Infrastructure.DependencyInjection;
 using Acroball.UI.DependencyInjection;
 
@@ -11,6 +12,9 @@ namespace Acroball.Desktop.Composition;
 public static class DesktopComposition
 {
     /// <summary>Builds the fully validated container.</summary>
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("linux")]
     public static ServiceProvider BuildServiceProvider()
     {
         var services = new ServiceCollection();

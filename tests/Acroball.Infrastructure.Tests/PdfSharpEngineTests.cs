@@ -1,9 +1,18 @@
-﻿using Microsoft.Extensions.Logging.Abstractions;
+﻿using System.Runtime.Versioning;
+using System.Text;
+using Microsoft.Extensions.Logging.Abstractions;
 using PdfSharp.Drawing;
+using PdfSharp.Fonts;
 using PdfSharp.Pdf;
+using PdfSharp.Pdf.AcroForms;
+using PdfSharp.Pdf.Advanced;
+using PdfSharp.Pdf.IO;
+using SkiaSharp;
 using Acroball.Application.Operations;
 using Acroball.Domain;
+using Acroball.Domain.Annotations;
 using Acroball.Domain.Exceptions;
+using Acroball.Domain.Forms;
 using Acroball.Infrastructure.Pdf;
 using Xunit;
 
@@ -15,6 +24,14 @@ namespace Acroball.Infrastructure.Tests;
 /// never need text rendering or fonts â€” which keeps the suite green on bare
 /// CI runners with no system fonts.
 /// </summary>
+/// <remarks>
+/// Platform-attributed (ADR-0010) because the annotation-rendering tests
+/// construct <see cref="PdfRenderService"/> directly, the same as
+/// <c>PdfRenderServiceTests</c>.
+/// </remarks>
+[SupportedOSPlatform("windows")]
+[SupportedOSPlatform("macos")]
+[SupportedOSPlatform("linux")]
 public class PdfSharpEngineTests : IDisposable
 {
     private readonly string _dir;
@@ -22,6 +39,11 @@ public class PdfSharpEngineTests : IDisposable
 
     public PdfSharpEngineTests()
     {
+        // Production DI composition assigns this once (ADR-0014); this test
+        // process never runs that composition, so the equivalent one-time
+        // assignment is done here instead.
+        GlobalFontSettings.FontResolver ??= new SkiaSystemFontResolver();
+
         _dir = Path.Combine(Path.GetTempPath(), "Acroball-engine-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_dir);
     }
@@ -61,6 +83,68 @@ public class PdfSharpEngineTests : IDisposable
 
     private string CreateEncryptedFixture(string name, int pageCount, string userPassword)
         => CreateFixture(name, pageCount, doc => doc.SecuritySettings.UserPassword = userPassword);
+
+    /// <summary>Encodes deterministic random noise so JPEG quality/size differences are real, not an artifact of flat-color content.</summary>
+    private static byte[] CreateNoiseJpeg(int width, int height, SKColorType colorType, SKAlphaType alphaType, int quality, int seed)
+    {
+        using var bitmap = new SKBitmap(new SKImageInfo(width, height, colorType, alphaType));
+        new Random(seed).NextBytes(bitmap.GetPixelSpan());
+        using var data = bitmap.Encode(SKEncodedImageFormat.Jpeg, quality);
+        return data.ToArray();
+    }
+
+    private static byte[] CreateNoisePng(int width, int height, int seed)
+    {
+        using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
+        new Random(seed).NextBytes(bitmap.GetPixelSpan());
+        using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
+    }
+
+    /// <summary>Creates a single-page PDF with one full-page embedded image.</summary>
+    private string CreateFixtureWithImage(string name, byte[] imageBytes, int pageWidth, int pageHeight)
+    {
+        var path = P(name);
+        using var document = new PdfDocument();
+        var page = document.AddPage();
+        page.Width = XUnit.FromPoint(pageWidth);
+        page.Height = XUnit.FromPoint(pageHeight);
+        using var gfx = XGraphics.FromPdfPage(page);
+        using var stream = new MemoryStream(imageBytes);
+        using var image = XImage.FromStream(stream);
+        gfx.DrawImage(image, 0, 0, pageWidth, pageHeight);
+        document.Save(path);
+        return path;
+    }
+
+    /// <summary>Reads back the first image XObject found on the first page.</summary>
+    private static (int Width, int Height, int StreamLength, string Filter) GetFirstImageInfo(string pdfPath)
+    {
+        using var document = PdfSharp.Pdf.IO.PdfReader.Open(pdfPath, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
+        foreach (var page in document.Pages.Cast<PdfPage>())
+        {
+            var xObjects = page.Resources.Elements.GetDictionary("/XObject");
+            if (xObjects is null)
+            {
+                continue;
+            }
+
+            foreach (var key in xObjects.Elements.Keys.ToArray())
+            {
+                var candidate = xObjects.Elements.GetDictionary(key);
+                if (candidate is not null && candidate.Elements.GetName("/Subtype") == "/Image")
+                {
+                    return (
+                        candidate.Elements.GetInteger("/Width"),
+                        candidate.Elements.GetInteger("/Height"),
+                        candidate.Stream?.Value?.Length ?? 0,
+                        candidate.Elements.GetName("/Filter"));
+                }
+            }
+        }
+
+        throw new InvalidOperationException($"No image XObject found in {pdfPath}.");
+    }
 
     private async Task<double[]> PageWidthsOf(string path, string? password = null)
     {
@@ -129,6 +213,59 @@ public class PdfSharpEngineTests : IDisposable
         Assert.Equal(Rotation.None, pages[0].Rotation);
         Assert.Equal(Rotation.Clockwise90, pages[1].Rotation);
         Assert.True(pages[1].IsLandscape); // 102x200 rotated 90Â° presents landscape
+    }
+
+    // ======================== outline ========================
+
+    [Fact]
+    public async Task GetOutline_on_document_with_no_bookmarks_returns_empty()
+    {
+        var path = CreateFixture("a.pdf", 2);
+
+        var outline = await _engine.GetOutlineAsync(path, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Empty(outline);
+    }
+
+    [Fact]
+    public async Task GetOutline_reads_nested_bookmarks_with_resolved_page_numbers()
+    {
+        var path = CreateFixture("a.pdf", 3, doc =>
+        {
+            var chapter1 = doc.Outlines.Add("Chapter 1", doc.Pages[0], true);
+            chapter1.Outlines.Add("Section 1.1", doc.Pages[1], false);
+            doc.Outlines.Add("Chapter 2", doc.Pages[2], false);
+        });
+
+        var outline = await _engine.GetOutlineAsync(path, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, outline.Count);
+
+        Assert.Equal("Chapter 1", outline[0].Title);
+        Assert.Equal(1, outline[0].DestinationPageNumber);
+        Assert.Single(outline[0].Children);
+        Assert.Equal("Section 1.1", outline[0].Children[0].Title);
+        Assert.Equal(2, outline[0].Children[0].DestinationPageNumber);
+        Assert.Empty(outline[0].Children[0].Children);
+
+        Assert.Equal("Chapter 2", outline[1].Title);
+        Assert.Equal(3, outline[1].DestinationPageNumber);
+        Assert.Empty(outline[1].Children);
+    }
+
+    [Fact]
+    public async Task GetOutline_opened_flag_does_not_round_trip_through_pdfsharp_save()
+    {
+        // PdfSharp.Pdf.PdfOutline.Opened is set to true for chapter1 below, but
+        // does not survive a save/reopen round trip in PDFsharp 6.2.4 (it reads
+        // back false regardless of what was written) — an upstream limitation,
+        // not a mapping bug here. IsExpanded is documented in ADR-0012 as
+        // best-effort for exactly this reason.
+        var path = CreateFixture("a.pdf", 1, doc => doc.Outlines.Add("Chapter 1", doc.Pages[0], opened: true));
+
+        var outline = await _engine.GetOutlineAsync(path, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(outline[0].IsExpanded);
     }
 
     // ======================== merge ========================
@@ -428,6 +565,576 @@ public class PdfSharpEngineTests : IDisposable
             () => _engine.EncryptAsync(
                 new EncryptRequest(source, output, new EncryptionOptions(null, null)),
                 cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    // ======================== compress ========================
+
+    [Fact]
+    public async Task Compress_lossless_preserves_page_geometry_and_leaves_images_untouched()
+    {
+        var jpeg = CreateNoiseJpeg(400, 300, SKColorType.Bgra8888, SKAlphaType.Premul, quality: 90, seed: 1);
+        var source = CreateFixtureWithImage("photo.pdf", jpeg, 400, 300);
+        var before = GetFirstImageInfo(source);
+        var output = P("lossless.pdf");
+
+        await _engine.CompressAsync(
+            new CompressRequest(source, output, CompressionProfile.Lossless),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var after = GetFirstImageInfo(output);
+        Assert.Equal(before.Width, after.Width);
+        Assert.Equal(before.Height, after.Height);
+        Assert.Equal(before.StreamLength, after.StreamLength);
+
+        var pages = await _engine.GetPagesAsync(output, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Single(pages);
+    }
+
+    [Fact]
+    public async Task Compress_balanced_downsamples_oversized_rgb_jpeg_and_shrinks_file()
+    {
+        var jpeg = CreateNoiseJpeg(2000, 1500, SKColorType.Bgra8888, SKAlphaType.Premul, quality: 95, seed: 2);
+        var source = CreateFixtureWithImage("photo.pdf", jpeg, 2000, 1500);
+        var output = P("balanced.pdf");
+
+        await _engine.CompressAsync(
+            new CompressRequest(source, output, CompressionProfile.Balanced),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var after = GetFirstImageInfo(output);
+        Assert.True(Math.Max(after.Width, after.Height) <= 1600, $"expected long edge <= 1600, was {Math.Max(after.Width, after.Height)}");
+        Assert.Equal("/DCTDecode", after.Filter);
+        Assert.True(new FileInfo(output).Length < new FileInfo(source).Length, "expected the compressed file to be smaller");
+
+        var info = await _engine.InspectAsync(output, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(1, info.PageCount);
+    }
+
+    [Fact]
+    public async Task Compress_aggressive_produces_smaller_or_equal_image_than_balanced()
+    {
+        var jpeg = CreateNoiseJpeg(2000, 1500, SKColorType.Bgra8888, SKAlphaType.Premul, quality: 95, seed: 3);
+        var balancedSource = CreateFixtureWithImage("balanced-in.pdf", jpeg, 2000, 1500);
+        var aggressiveSource = CreateFixtureWithImage("aggressive-in.pdf", jpeg, 2000, 1500);
+        var balancedOutput = P("balanced.pdf");
+        var aggressiveOutput = P("aggressive.pdf");
+
+        await _engine.CompressAsync(
+            new CompressRequest(balancedSource, balancedOutput, CompressionProfile.Balanced),
+            cancellationToken: TestContext.Current.CancellationToken);
+        await _engine.CompressAsync(
+            new CompressRequest(aggressiveSource, aggressiveOutput, CompressionProfile.Aggressive),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var balanced = GetFirstImageInfo(balancedOutput);
+        var aggressive = GetFirstImageInfo(aggressiveOutput);
+
+        Assert.True(Math.Max(aggressive.Width, aggressive.Height) <= 1000);
+        Assert.True(aggressive.StreamLength <= balanced.StreamLength);
+    }
+
+    [Fact]
+    public async Task Compress_leaves_non_jpeg_images_untouched()
+    {
+        var png = CreateNoisePng(400, 300, seed: 4);
+        var source = CreateFixtureWithImage("graphic.pdf", png, 400, 300);
+        var before = GetFirstImageInfo(source);
+        var output = P("aggressive.pdf");
+
+        await _engine.CompressAsync(
+            new CompressRequest(source, output, CompressionProfile.Aggressive),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var after = GetFirstImageInfo(output);
+        Assert.Equal(before.StreamLength, after.StreamLength);
+        Assert.NotEqual("/DCTDecode", after.Filter);
+    }
+
+    [Fact]
+    public async Task Compress_reports_monotonic_progress_ending_at_one()
+    {
+        var jpeg = CreateNoiseJpeg(800, 600, SKColorType.Bgra8888, SKAlphaType.Premul, quality: 90, seed: 5);
+        var source = CreateFixtureWithImage("photo.pdf", jpeg, 800, 600);
+        var progress = new ProgressCollector();
+
+        await _engine.CompressAsync(
+            new CompressRequest(source, P("out.pdf"), CompressionProfile.Balanced),
+            progress,
+            TestContext.Current.CancellationToken);
+
+        var fractions = progress.Reports.Select(r => r.Fraction).ToArray();
+        Assert.True(fractions.Length >= 2);
+        Assert.True(fractions.SequenceEqual(fractions.OrderBy(f => f)), "progress went backwards");
+        Assert.Equal(1.0, fractions[^1]);
+    }
+
+    // ======================== compose ========================
+
+    [Fact]
+    public async Task Compose_assembles_pages_from_multiple_files_in_explicit_order()
+    {
+        var a = CreateFixture("a.pdf", 3);
+        var b = CreateFixture("b.pdf", 2);
+        var output = P("organized.pdf");
+
+        await _engine.ComposeAsync(
+            new ComposeRequest(
+                [
+                    new PageAssignment(b, 2),
+                    new PageAssignment(a, 1),
+                    new PageAssignment(a, 1),
+                    new PageAssignment(b, 1),
+                ],
+                output),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        AssertWidths([102, 101, 101, 101], await PageWidthsOf(output));
+    }
+
+    [Fact]
+    public async Task Compose_applies_rotation_delta_per_page()
+    {
+        var a = CreateFixture("a.pdf", 2);
+        var output = P("organized.pdf");
+
+        await _engine.ComposeAsync(
+            new ComposeRequest(
+                [
+                    new PageAssignment(a, 1, Rotation.Clockwise90),
+                    new PageAssignment(a, 2),
+                ],
+                output),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var pages = await _engine.GetPagesAsync(output, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(Rotation.Clockwise90, pages[0].Rotation);
+        Assert.Equal(Rotation.None, pages[1].Rotation);
+    }
+
+    [Fact]
+    public async Task Compose_rejects_empty_page_list()
+        => await Assert.ThrowsAsync<PdfOperationException>(
+            () => _engine.ComposeAsync(
+                new ComposeRequest([], P("out.pdf")),
+                cancellationToken: TestContext.Current.CancellationToken));
+
+    [Fact]
+    public async Task Compose_out_of_range_page_throws_before_writing()
+    {
+        var a = CreateFixture("a.pdf", 2);
+        var output = P("organized.pdf");
+
+        await Assert.ThrowsAsync<PdfOperationException>(
+            () => _engine.ComposeAsync(
+                new ComposeRequest([new PageAssignment(a, 9)], output),
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.False(File.Exists(output));
+    }
+
+    [Fact]
+    public async Task Compose_uses_per_source_passwords()
+    {
+        var locked = CreateEncryptedFixture("locked.pdf", 1, "hunter2");
+        var output = P("organized.pdf");
+
+        await _engine.ComposeAsync(
+            new ComposeRequest(
+                [new PageAssignment(locked, 1)],
+                output,
+                new Dictionary<string, string> { [locked] = "hunter2" }),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var info = await _engine.InspectAsync(output, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(1, info.PageCount);
+        Assert.False(info.IsEncrypted);
+    }
+
+    // ======================== annotations ========================
+
+    private static readonly AnnotationColor Red = new(220, 20, 20);
+
+    /// <summary>Dereferences one entry of a reopened page's <c>/Annots</c> array (PdfSharp returns each as a <see cref="PdfReference"/>).</summary>
+    private static PdfDictionary ResolveAnnotationDictionary(PdfPage page, int index)
+    {
+        var item = page.Annotations.Elements[index];
+        return item switch
+        {
+            PdfReference reference => (PdfDictionary)reference.Value,
+            PdfDictionary dict => dict,
+            _ => throw new InvalidOperationException($"Unexpected annotation item type: {item.GetType()}."),
+        };
+    }
+
+    /// <summary>Decodes a rendered page's PNG and checks whether any pixel is close to <paramref name="color"/>.</summary>
+    private static bool RenderedPageContainsColor(byte[] encodedPng, AnnotationColor color, byte tolerance = 40)
+    {
+        using var bitmap = SKBitmap.Decode(encodedPng);
+        for (var y = 0; y < bitmap.Height; y++)
+        {
+            for (var x = 0; x < bitmap.Width; x++)
+            {
+                var px = bitmap.GetPixel(x, y);
+                if (Math.Abs(px.Red - color.R) <= tolerance
+                    && Math.Abs(px.Green - color.G) <= tolerance
+                    && Math.Abs(px.Blue - color.B) <= tolerance)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    [Fact]
+    public async Task SaveAnnotations_out_of_range_page_throws()
+    {
+        var path = CreateFixture("a.pdf", 1);
+
+        await Assert.ThrowsAsync<PdfOperationException>(
+            () => _engine.SaveAnnotationsAsync(
+                new SaveAnnotationsRequest(path, P("out.pdf"), [new SquareAnnotationEdit(9, 10, 10, 50, 50, Red)]),
+                cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task SaveAnnotations_square_round_trips_and_renders()
+    {
+        var path = CreateFixture("a.pdf", 1, doc =>
+        {
+            doc.Pages[0].Width = XUnit.FromPoint(300);
+            doc.Pages[0].Height = XUnit.FromPoint(300);
+        });
+        var output = P("out.pdf");
+        var annotation = new SquareAnnotationEdit(1, X: 50, Y: 50, Width: 100, Height: 80, Color: Red, StrokeWidthPoints: 6);
+
+        await _engine.SaveAnnotationsAsync(
+            new SaveAnnotationsRequest(path, output, [annotation]),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        using (var reopened = PdfReader.Open(output, PdfDocumentOpenMode.Import))
+        {
+            var page = reopened.Pages[0];
+            Assert.Equal(1, page.Annotations.Count);
+            var dict = ResolveAnnotationDictionary(page, 0);
+            Assert.Equal("/Square", dict.Elements.GetName("/Subtype"));
+            Assert.NotNull(dict.Elements.GetDictionary("/AP"));
+        }
+
+        var renderService = new PdfRenderService(NullLogger<PdfRenderService>.Instance);
+        var rendered = await renderService.RenderPageAsync(output, 1, 300, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.True(RenderedPageContainsColor(rendered.EncodedPng, Red));
+    }
+
+    [Fact]
+    public async Task SaveAnnotations_highlight_round_trips_and_renders()
+    {
+        var path = CreateFixture("a.pdf", 1, doc =>
+        {
+            doc.Pages[0].Width = XUnit.FromPoint(300);
+            doc.Pages[0].Height = XUnit.FromPoint(300);
+        });
+        var output = P("out.pdf");
+        var yellow = new AnnotationColor(255, 230, 0);
+        var quad = new QuadPoints(X1: 40, Y1: 120, X2: 160, Y2: 120, X3: 40, Y3: 100, X4: 160, Y4: 100);
+        var annotation = new HighlightAnnotationEdit(1, [quad], yellow, Opacity: 0.9);
+
+        await _engine.SaveAnnotationsAsync(
+            new SaveAnnotationsRequest(path, output, [annotation]),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        using (var reopened = PdfReader.Open(output, PdfDocumentOpenMode.Import))
+        {
+            var dict = ResolveAnnotationDictionary(reopened.Pages[0], 0);
+            Assert.Equal("/Highlight", dict.Elements.GetName("/Subtype"));
+            Assert.NotNull(dict.Elements["/QuadPoints"]);
+            Assert.NotNull(dict.Elements.GetDictionary("/AP"));
+        }
+
+        var renderService = new PdfRenderService(NullLogger<PdfRenderService>.Instance);
+        var rendered = await renderService.RenderPageAsync(output, 1, 300, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.True(RenderedPageContainsColor(rendered.EncodedPng, yellow, tolerance: 60));
+    }
+
+    [Fact]
+    public async Task SaveAnnotations_freetext_round_trips_and_renders()
+    {
+        var path = CreateFixture("a.pdf", 1, doc =>
+        {
+            doc.Pages[0].Width = XUnit.FromPoint(300);
+            doc.Pages[0].Height = XUnit.FromPoint(300);
+        });
+        var output = P("out.pdf");
+        var annotation = new FreeTextAnnotationEdit(1, X: 30, Y: 30, Width: 150, Height: 40, Text: "Note", Color: Red, FontSize: 18);
+
+        await _engine.SaveAnnotationsAsync(
+            new SaveAnnotationsRequest(path, output, [annotation]),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        using (var reopened = PdfReader.Open(output, PdfDocumentOpenMode.Import))
+        {
+            var dict = ResolveAnnotationDictionary(reopened.Pages[0], 0);
+            Assert.Equal("/FreeText", dict.Elements.GetName("/Subtype"));
+            Assert.Equal("Note", dict.Elements.GetString("/Contents"));
+            Assert.NotNull(dict.Elements.GetDictionary("/AP"));
+        }
+
+        var renderService = new PdfRenderService(NullLogger<PdfRenderService>.Instance);
+        var rendered = await renderService.RenderPageAsync(output, 1, 300, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.True(RenderedPageContainsColor(rendered.EncodedPng, Red));
+    }
+
+    [Fact]
+    public async Task SaveAnnotations_ink_round_trips_and_renders()
+    {
+        var path = CreateFixture("a.pdf", 1, doc =>
+        {
+            doc.Pages[0].Width = XUnit.FromPoint(300);
+            doc.Pages[0].Height = XUnit.FromPoint(300);
+        });
+        var output = P("out.pdf");
+        var stroke = new InkStroke([new InkPoint(50, 50), new InkPoint(100, 150), new InkPoint(150, 50)]);
+        var annotation = new InkAnnotationEdit(1, [stroke], Red, StrokeWidthPoints: 5);
+
+        await _engine.SaveAnnotationsAsync(
+            new SaveAnnotationsRequest(path, output, [annotation]),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        using (var reopened = PdfReader.Open(output, PdfDocumentOpenMode.Import))
+        {
+            var dict = ResolveAnnotationDictionary(reopened.Pages[0], 0);
+            Assert.Equal("/Ink", dict.Elements.GetName("/Subtype"));
+            Assert.NotNull(dict.Elements["/InkList"]);
+            Assert.NotNull(dict.Elements.GetDictionary("/AP"));
+        }
+
+        var renderService = new PdfRenderService(NullLogger<PdfRenderService>.Instance);
+        var rendered = await renderService.RenderPageAsync(output, 1, 300, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.True(RenderedPageContainsColor(rendered.EncodedPng, Red));
+    }
+
+    [Fact]
+    public async Task SaveAnnotations_multiple_annotations_across_pages()
+    {
+        var path = CreateFixture("a.pdf", 2, doc =>
+        {
+            doc.Pages[0].Width = XUnit.FromPoint(300);
+            doc.Pages[0].Height = XUnit.FromPoint(300);
+            doc.Pages[1].Width = XUnit.FromPoint(300);
+            doc.Pages[1].Height = XUnit.FromPoint(300);
+        });
+        var output = P("out.pdf");
+
+        await _engine.SaveAnnotationsAsync(
+            new SaveAnnotationsRequest(path, output,
+            [
+                new SquareAnnotationEdit(1, 10, 10, 50, 50, Red),
+                new SquareAnnotationEdit(2, 10, 10, 50, 50, Red),
+            ]),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        using var reopened = PdfReader.Open(output, PdfDocumentOpenMode.Import);
+        Assert.Equal(1, reopened.Pages[0].Annotations.Count);
+        Assert.Equal(1, reopened.Pages[1].Annotations.Count);
+    }
+
+    // ======================== forms ========================
+
+    /// <summary>
+    /// Hand-authors a minimal AcroForm (text + checkbox + combo box), the
+    /// same low-level dictionary technique as the annotations fixtures
+    /// (ADR-0013) — PDFsharp's typed field classes (<see cref="PdfTextField"/>
+    /// etc.) have only non-public constructors, so they can be read and
+    /// filled but not authored (ADR-0014). The checkbox needs a real
+    /// <c>/AP /N</c> dictionary with named on/off states: without one,
+    /// PdfSharp can still report <c>CheckedName</c>/<c>UncheckedName</c>
+    /// (falling back to <c>/Yes</c>/<c>/Off</c>) but throws
+    /// <see cref="ArgumentNullException"/> from inside its own
+    /// <c>PdfCheckBoxField.Checked</c> setter — verified directly, not assumed.
+    /// </summary>
+    private string CreateFormFixture(string name)
+    {
+        var path = P(name);
+        using var document = new PdfDocument();
+        var page = document.AddPage();
+        page.Width = XUnit.FromPoint(300);
+        page.Height = XUnit.FromPoint(300);
+
+        var textField = new PdfDictionary(document);
+        textField.Elements.SetName("/Type", "/Annot");
+        textField.Elements.SetName("/Subtype", "/Widget");
+        textField.Elements.SetName("/FT", "/Tx");
+        textField.Elements.SetString("/T", "Name");
+        textField.Elements.SetValue("/Rect", new PdfRectangle(new XRect(50, 250, 150, 20)));
+        textField.Elements.SetString("/DA", "/Helv 12 Tf 0 g");
+        document.Internals.AddObject(textField);
+        page.Annotations.Elements.Add(textField);
+
+        var onForm = new PdfDictionary(document);
+        onForm.Elements.SetName("/Type", "/XObject");
+        onForm.Elements.SetName("/Subtype", "/Form");
+        onForm.Elements.SetValue("/BBox", new PdfRectangle(new XRect(0, 0, 20, 20)));
+        onForm.CreateStream(Encoding.ASCII.GetBytes("0 0 20 20 re f\n"));
+        document.Internals.AddObject(onForm);
+
+        var offForm = new PdfDictionary(document);
+        offForm.Elements.SetName("/Type", "/XObject");
+        offForm.Elements.SetName("/Subtype", "/Form");
+        offForm.Elements.SetValue("/BBox", new PdfRectangle(new XRect(0, 0, 20, 20)));
+        offForm.CreateStream([]);
+        document.Internals.AddObject(offForm);
+
+        var checkBoxAppearance = new PdfDictionary(document);
+        checkBoxAppearance.Elements["/Yes"] = onForm.Reference;
+        checkBoxAppearance.Elements["/Off"] = offForm.Reference;
+        var checkBoxAp = new PdfDictionary(document);
+        checkBoxAp.Elements["/N"] = checkBoxAppearance;
+
+        var checkBox = new PdfDictionary(document);
+        checkBox.Elements.SetName("/Type", "/Annot");
+        checkBox.Elements.SetName("/Subtype", "/Widget");
+        checkBox.Elements.SetName("/FT", "/Btn");
+        checkBox.Elements.SetString("/T", "Agree");
+        checkBox.Elements.SetValue("/Rect", new PdfRectangle(new XRect(50, 220, 20, 20)));
+        checkBox.Elements.SetName("/AS", "/Off");
+        checkBox.Elements.SetName("/V", "/Off");
+        checkBox.Elements["/AP"] = checkBoxAp;
+        document.Internals.AddObject(checkBox);
+        page.Annotations.Elements.Add(checkBox);
+
+        var combo = new PdfDictionary(document);
+        combo.Elements.SetName("/Type", "/Annot");
+        combo.Elements.SetName("/Subtype", "/Widget");
+        combo.Elements.SetName("/FT", "/Ch");
+        combo.Elements.SetInteger("/Ff", 1 << 17); // Combo flag (bit 18 of the field-flags integer).
+        combo.Elements.SetString("/T", "Color");
+        combo.Elements.SetValue("/Rect", new PdfRectangle(new XRect(50, 190, 100, 20)));
+        combo.Elements.SetString("/DA", "/Helv 12 Tf 0 g");
+        var options = new PdfArray(document);
+        options.Elements.Add(new PdfString("Red"));
+        options.Elements.Add(new PdfString("Green"));
+        options.Elements.Add(new PdfString("Blue"));
+        combo.Elements["/Opt"] = options;
+        document.Internals.AddObject(combo);
+        page.Annotations.Elements.Add(combo);
+
+        var acroForm = new PdfDictionary(document);
+        var fieldsArray = new PdfArray(document);
+        fieldsArray.Elements.Add(textField.Reference!);
+        fieldsArray.Elements.Add(checkBox.Reference!);
+        fieldsArray.Elements.Add(combo.Reference!);
+        acroForm.Elements["/Fields"] = fieldsArray;
+        document.Internals.AddObject(acroForm);
+        document.Internals.Catalog.Elements["/AcroForm"] = acroForm.Reference;
+
+        document.Save(path);
+        return path;
+    }
+
+    [Fact]
+    public async Task GetFormFields_on_document_with_no_form_returns_empty()
+    {
+        var path = CreateFixture("a.pdf", 1);
+
+        var fields = await _engine.GetFormFieldsAsync(path, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Empty(fields);
+    }
+
+    [Fact]
+    public async Task GetFormFields_reads_text_checkbox_and_combo_fields()
+    {
+        var path = CreateFormFixture("form.pdf");
+
+        var fields = await _engine.GetFormFieldsAsync(path, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, fields.Count);
+
+        var text = Assert.Single(fields, f => f.FullyQualifiedName == "Name");
+        Assert.Equal(FormFieldKind.Text, text.Kind);
+        Assert.False(text.IsReadOnly);
+
+        var checkBox = Assert.Single(fields, f => f.FullyQualifiedName == "Agree");
+        Assert.Equal(FormFieldKind.CheckBox, checkBox.Kind);
+        Assert.Equal("/Off", checkBox.CurrentValue);
+        Assert.Equal(["/Yes", "/Off"], checkBox.Options);
+
+        var combo = Assert.Single(fields, f => f.FullyQualifiedName == "Color");
+        Assert.Equal(FormFieldKind.ComboBox, combo.Kind);
+        Assert.Equal(["Red", "Green", "Blue"], combo.Options);
+    }
+
+    [Fact]
+    public async Task FillForm_round_trips_text_checkbox_and_combo_values()
+    {
+        var path = CreateFormFixture("form.pdf");
+        var output = P("filled.pdf");
+
+        await _engine.FillFormAsync(
+            new FillFormRequest(path, output,
+            [
+                new FormFieldValue("Name", "Ada Lovelace"),
+                new FormFieldValue("Agree", "/Yes"),
+                new FormFieldValue("Color", "Green"),
+            ]),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var fields = await _engine.GetFormFieldsAsync(output, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("Ada Lovelace", Assert.Single(fields, f => f.FullyQualifiedName == "Name").CurrentValue);
+        Assert.Equal("/Yes", Assert.Single(fields, f => f.FullyQualifiedName == "Agree").CurrentValue);
+        Assert.Equal("Green", Assert.Single(fields, f => f.FullyQualifiedName == "Color").CurrentValue);
+
+        using var reopened = PdfReader.Open(output, PdfDocumentOpenMode.Import);
+        Assert.True(reopened.AcroForm!.Elements.GetBoolean("/NeedAppearances"));
+    }
+
+    [Fact]
+    public async Task FillForm_missing_field_name_throws()
+    {
+        var path = CreateFormFixture("form.pdf");
+
+        await Assert.ThrowsAsync<PdfOperationException>(
+            () => _engine.FillFormAsync(
+                new FillFormRequest(path, P("out.pdf"), [new FormFieldValue("DoesNotExist", "x")]),
+                cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task FillForm_invalid_combo_option_throws()
+    {
+        var path = CreateFormFixture("form.pdf");
+
+        await Assert.ThrowsAsync<PdfOperationException>(
+            () => _engine.FillFormAsync(
+                new FillFormRequest(path, P("out.pdf"), [new FormFieldValue("Color", "Purple")]),
+                cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task FillForm_on_document_with_no_form_throws()
+    {
+        var path = CreateFixture("a.pdf", 1);
+
+        await Assert.ThrowsAsync<PdfOperationException>(
+            () => _engine.FillFormAsync(
+                new FillFormRequest(path, P("out.pdf"), [new FormFieldValue("Name", "x")]),
+                cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task FillForm_with_flatten_marks_fields_read_only()
+    {
+        var path = CreateFormFixture("form.pdf");
+        var output = P("filled.pdf");
+
+        await _engine.FillFormAsync(
+            new FillFormRequest(path, output, [new FormFieldValue("Name", "Ada")], FlattenAfterFill: true),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var fields = await _engine.GetFormFieldsAsync(output, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.All(fields, f => Assert.True(f.IsReadOnly));
     }
 }
 

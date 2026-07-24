@@ -1,0 +1,191 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Acroball.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="980" d:DesignHeight="820"
+             x:Class="Acroball.UI.Views.OrganizeView"
+             x:DataType="vm:OrganizeViewModel">
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="32" Spacing="20" MaxWidth="1100" HorizontalAlignment="Left">
+      <StackPanel Spacing="6">
+        <TextBlock Classes="h1" Text="Organize" />
+        <TextBlock Classes="caption" Text="Reorder, rotate, delete and move pages visually." />
+      </StackPanel>
+
+      <Border Classes="card" Padding="20" CornerRadius="16" DragDrop.AllowDrop="True" DragDrop.DragOver="OnFilesDragOver" DragDrop.Drop="OnFilesDrop">
+        <StackPanel Spacing="12">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <StackPanel Grid.Column="0" Spacing="4">
+              <TextBlock Classes="label" Text="Pages" />
+              <TextBlock Classes="caption" Text="Drag PDFs here or add them with the button. Drag a page tile to reorder, or onto another tile to insert it there." />
+            </StackPanel>
+            <Button Grid.Column="1" Content="Add Files" Command="{Binding PickFilesCommand}" />
+          </Grid>
+
+          <TextBlock Classes="caption" Text="{Binding PageCountCaption}" />
+
+          <TextBlock Text="{Binding ValidationMessage}"
+                     Foreground="{DynamicResource Q.Brush.Danger}"
+                     TextWrapping="Wrap" />
+
+          <TextBlock Text="{Binding AddFileError}"
+                     Foreground="{DynamicResource Q.Brush.Danger}"
+                     TextWrapping="Wrap" />
+
+          <Border Padding="16" CornerRadius="12"
+                  Background="{DynamicResource Q.Brush.SurfaceElevated}"
+                  IsVisible="{Binding HasPendingPassword}">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="label" Text="{Binding PendingPasswordFileName, StringFormat=Password needed for {0}}" />
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <TextBox Grid.Column="0" Text="{Binding PendingPasswordInput}" PasswordChar="•" PlaceholderText="Password" />
+                <Button Grid.Column="1" Content="Unlock" Command="{Binding SubmitPendingPasswordCommand}" />
+                <Button Grid.Column="2" Content="Cancel" Command="{Binding CancelPendingPasswordCommand}" />
+              </Grid>
+              <TextBlock Text="{Binding PendingPasswordError}"
+                         Foreground="{DynamicResource Q.Brush.Danger}" />
+            </StackPanel>
+          </Border>
+
+          <ItemsControl ItemsSource="{Binding Pages}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel Orientation="Horizontal" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:OrganizePageViewModel">
+                <Border Width="140" Margin="0,0,12,12" Padding="8"
+                        CornerRadius="12"
+                        Background="{DynamicResource Q.Brush.Surface}"
+                        BorderBrush="{DynamicResource Q.Brush.Border}"
+                        BorderThickness="1"
+                        DragDrop.AllowDrop="True"
+                        PointerPressed="OnPageTilePointerPressed"
+                        DragDrop.DragOver="OnPageTileDragOver"
+                        DragDrop.Drop="OnPageTileDrop">
+                  <StackPanel Spacing="6">
+                    <Border Height="120" CornerRadius="8" ClipToBounds="True"
+                            Background="{DynamicResource Q.Brush.SurfaceSidebar}"
+                            HorizontalAlignment="Stretch">
+                      <Panel>
+                        <Image Source="{Binding Thumbnail}"
+                               Stretch="Uniform"
+                               RenderTransformOrigin="0.5,0.5">
+                          <Image.RenderTransform>
+                            <RotateTransform Angle="{Binding RotationAngle}" />
+                          </Image.RenderTransform>
+                        </Image>
+                        <TextBlock Text="…" IsVisible="{Binding IsLoadingThumbnail}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Classes="caption" />
+                        <TextBlock Text="{Binding ThumbnailError}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextWrapping="Wrap" TextAlignment="Center"
+                                   Classes="caption" Opacity="0.7" />
+                      </Panel>
+                    </Border>
+
+                    <TextBlock Text="{Binding SourceFileName}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding SourcePageNumber, StringFormat=Page {0}}" Classes="caption" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                      <Button Content="⟲" Padding="6,2" FontSize="12"
+                              Command="{Binding $parent[ItemsControl].((vm:OrganizeViewModel)DataContext).RotateLeftCommand}"
+                              CommandParameter="{Binding Id}"
+                              ToolTip.Tip="Rotate left" />
+                      <Button Content="⟳" Padding="6,2" FontSize="12"
+                              Command="{Binding $parent[ItemsControl].((vm:OrganizeViewModel)DataContext).RotateRightCommand}"
+                              CommandParameter="{Binding Id}"
+                              ToolTip.Tip="Rotate right" />
+                      <Button Content="✕" Padding="6,2" FontSize="12"
+                              Command="{Binding $parent[ItemsControl].((vm:OrganizeViewModel)DataContext).RemovePageCommand}"
+                              CommandParameter="{Binding Id}"
+                              ToolTip.Tip="Remove page" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="label" Text="Output" />
+          <TextBlock Classes="caption" Text="Choose an output folder, then edit the suggested file name if you want a different result." />
+
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <TextBox Grid.Column="0"
+                     Text="{Binding OutputDirectory}"
+                     PlaceholderText="Choose an output folder"
+                     IsReadOnly="True" />
+            <Button Grid.Column="1" Content="Browse folder" Command="{Binding PickOutputFolderCommand}" />
+          </Grid>
+
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <TextBox Grid.Column="0"
+                     Text="{Binding OutputFileName}"
+                     PlaceholderText="Organized.pdf" />
+            <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="caption" Text="Editable file name" />
+          </Grid>
+
+          <Border Padding="12" CornerRadius="12" Background="{DynamicResource Q.Brush.SurfaceElevated}">
+            <StackPanel Spacing="4">
+              <TextBlock Classes="caption" Text="Preview" />
+              <TextBlock Text="{Binding OutputFilePath}" TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16">
+        <StackPanel Spacing="12">
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" Spacing="12">
+            <TextBlock Classes="label" Text="Execution" VerticalAlignment="Center" />
+            <TextBlock Classes="caption" Text="{Binding ProgressMessage}" VerticalAlignment="Center" />
+          </StackPanel>
+
+          <ProgressBar Minimum="0"
+                       Maximum="1"
+                       Value="{Binding ProgressPercent}"
+                       IsVisible="{Binding IsBusy}" />
+
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <TextBlock Text="{Binding ProgressPercent, StringFormat={}{0:P0}}" Classes="caption" />
+            <TextBlock Grid.Column="1" Text="{Binding ElapsedText, StringFormat=Elapsed: {0}}" Classes="caption" HorizontalAlignment="Center" />
+            <TextBlock Grid.Column="2" Text="{Binding IsBusy, StringFormat=Busy: {0}}" Classes="caption" HorizontalAlignment="Right" />
+          </Grid>
+
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Organize" Command="{Binding ExecuteOrganizeCommand}" IsEnabled="{Binding CanExecute}" />
+            <Button Content="Cancel" Command="{Binding CancelExecutionCommand}" IsVisible="{Binding IsBusy}" />
+            <Button Content="Open Output Folder" Command="{Binding OpenOutputFolderCommand}" IsVisible="{Binding HasSuccessResult}" />
+            <Button Content="Organize Another" Command="{Binding OrganizeAnotherCommand}" IsVisible="{Binding HasSuccessResult}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16" IsVisible="{Binding HasSuccessResult}">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="label" Text="Organize complete" />
+          <TextBlock Text="{Binding LastSummary}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding OutputDirectory, StringFormat=Folder: {0}}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding OutputFilePath, StringFormat=File: {0}}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding ElapsedText, StringFormat=Time taken: {0}}" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16" IsVisible="{Binding HasFailureResult}">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="label" Text="Organize failed" />
+          <TextBlock Text="{Binding LastError}" TextWrapping="Wrap" Foreground="{DynamicResource Q.Brush.Danger}" />
+          <Button Content="Organize Another" Command="{Binding OrganizeAnotherCommand}" HorizontalAlignment="Left" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

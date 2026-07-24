@@ -12,6 +12,7 @@
         WindowStartupLocation="CenterScreen">
 
   <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+0" Command="{Binding NavigateCommand}" CommandParameter="viewer" />
     <KeyBinding Gesture="Ctrl+1" Command="{Binding NavigateCommand}" CommandParameter="home" />
     <KeyBinding Gesture="Ctrl+2" Command="{Binding NavigateCommand}" CommandParameter="merge" />
     <KeyBinding Gesture="Ctrl+3" Command="{Binding NavigateCommand}" CommandParameter="split" />

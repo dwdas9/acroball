@@ -24,6 +24,7 @@ public static class ToolCatalog
     /// <summary>All built-in tools, in home-screen order.</summary>
     public static IReadOnlyList<ToolDefinition> All { get; } =
     [
+        new("viewer", "Viewer", "Browse a PDF's pages in a continuous scroll.", "Viewer", "M6"),
         new("merge", "Merge", "Combine several PDFs into one, in the order you choose.", "Merge", "M3"),
         new("split", "Split", "Break a PDF apart by page ranges into separate files.", "Split", "M2"),
         new("organize", "Organize", "Reorder, rotate, delete and move pages visually.", "Organize", "M3"),
@@ -32,6 +33,7 @@ public static class ToolCatalog
         new("compress", "Compress", "Shrink file size with control over quality.", "Compress", "M4"),
         new("protect", "Protect", "Add or remove passwords and set permissions.", "Lock", "M4"),
         new("metadata", "Metadata", "View and edit title, author and document info.", "Tag", "M4"),
+        new("fill-form", "Fill Form", "Fill in AcroForm fields and save a completed copy.", "Form", "M7"),
     ];
 
     /// <summary>Returns the tool with the given id.</summary>

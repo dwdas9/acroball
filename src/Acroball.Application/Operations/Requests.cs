@@ -1,4 +1,6 @@
 ﻿using Acroball.Domain;
+using Acroball.Domain.Annotations;
+using Acroball.Domain.Forms;
 
 namespace Acroball.Application.Operations;
 
@@ -126,5 +128,29 @@ public sealed record UpdateMetadataRequest(
     string InputFile,
     string OutputFile,
     DocumentMetadata Metadata,
+    string? Password = null);
+
+/// <summary>Add annotations to a PDF, writing the result to a new file.</summary>
+/// <param name="InputFile">Absolute path of the source file.</param>
+/// <param name="OutputFile">Absolute path of the file to create.</param>
+/// <param name="Annotations">The annotations to add, across one or more pages.</param>
+/// <param name="Password">Password for the source file, when encrypted.</param>
+public sealed record SaveAnnotationsRequest(
+    string InputFile,
+    string OutputFile,
+    IReadOnlyList<AnnotationEdit> Annotations,
+    string? Password = null);
+
+/// <summary>Fill AcroForm fields, writing the result to a new file.</summary>
+/// <param name="InputFile">Absolute path of the source file.</param>
+/// <param name="OutputFile">Absolute path of the file to create.</param>
+/// <param name="Values">The field values to write.</param>
+/// <param name="FlattenAfterFill">When true, every field is marked read-only after filling.</param>
+/// <param name="Password">Password for the source file, when encrypted.</param>
+public sealed record FillFormRequest(
+    string InputFile,
+    string OutputFile,
+    IReadOnlyList<FormFieldValue> Values,
+    bool FlattenAfterFill = false,
     string? Password = null);
 

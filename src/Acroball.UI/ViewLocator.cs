@@ -16,12 +16,16 @@ public sealed class ViewLocator : IDataTemplate
     {
         [typeof(HomeViewModel)] = () => new HomeView(),
         [typeof(SettingsViewModel)] = () => new SettingsView(),
+        [typeof(ViewerViewModel)] = () => new ViewerView(),
         [typeof(MergeViewModel)] = () => new MergeView(),
         [typeof(SplitViewModel)] = () => new Views.SplitView(),
         [typeof(ExtractViewModel)] = () => new ExtractView(),
+        [typeof(OrganizeViewModel)] = () => new OrganizeView(),
         [typeof(RotateViewModel)] = () => new RotateView(),
+        [typeof(CompressViewModel)] = () => new CompressView(),
         [typeof(MetadataViewModel)] = () => new MetadataView(),
         [typeof(ProtectViewModel)] = () => new ProtectView(),
+        [typeof(FormViewModel)] = () => new FormView(),
         [typeof(ToolPlaceholderViewModel)] = () => new ToolPlaceholderView(),
     };
 
