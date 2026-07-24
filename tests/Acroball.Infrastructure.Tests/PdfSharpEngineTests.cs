@@ -1,9 +1,13 @@
-﻿using Microsoft.Extensions.Logging.Abstractions;
+﻿using System.Runtime.Versioning;
+using Microsoft.Extensions.Logging.Abstractions;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
+using PdfSharp.Pdf.Advanced;
+using PdfSharp.Pdf.IO;
 using SkiaSharp;
 using Acroball.Application.Operations;
 using Acroball.Domain;
+using Acroball.Domain.Annotations;
 using Acroball.Domain.Exceptions;
 using Acroball.Infrastructure.Pdf;
 using Xunit;
@@ -16,6 +20,14 @@ namespace Acroball.Infrastructure.Tests;
 /// never need text rendering or fonts â€” which keeps the suite green on bare
 /// CI runners with no system fonts.
 /// </summary>
+/// <remarks>
+/// Platform-attributed (ADR-0010) because the annotation-rendering tests
+/// construct <see cref="PdfRenderService"/> directly, the same as
+/// <c>PdfRenderServiceTests</c>.
+/// </remarks>
+[SupportedOSPlatform("windows")]
+[SupportedOSPlatform("macos")]
+[SupportedOSPlatform("linux")]
 public class PdfSharpEngineTests : IDisposable
 {
     private readonly string _dir;
@@ -727,6 +739,195 @@ public class PdfSharpEngineTests : IDisposable
         var info = await _engine.InspectAsync(output, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(1, info.PageCount);
         Assert.False(info.IsEncrypted);
+    }
+
+    // ======================== annotations ========================
+
+    private static readonly AnnotationColor Red = new(220, 20, 20);
+
+    /// <summary>Dereferences one entry of a reopened page's <c>/Annots</c> array (PdfSharp returns each as a <see cref="PdfReference"/>).</summary>
+    private static PdfDictionary ResolveAnnotationDictionary(PdfPage page, int index)
+    {
+        var item = page.Annotations.Elements[index];
+        return item switch
+        {
+            PdfReference reference => (PdfDictionary)reference.Value,
+            PdfDictionary dict => dict,
+            _ => throw new InvalidOperationException($"Unexpected annotation item type: {item.GetType()}."),
+        };
+    }
+
+    /// <summary>Decodes a rendered page's PNG and checks whether any pixel is close to <paramref name="color"/>.</summary>
+    private static bool RenderedPageContainsColor(byte[] encodedPng, AnnotationColor color, byte tolerance = 40)
+    {
+        using var bitmap = SKBitmap.Decode(encodedPng);
+        for (var y = 0; y < bitmap.Height; y++)
+        {
+            for (var x = 0; x < bitmap.Width; x++)
+            {
+                var px = bitmap.GetPixel(x, y);
+                if (Math.Abs(px.Red - color.R) <= tolerance
+                    && Math.Abs(px.Green - color.G) <= tolerance
+                    && Math.Abs(px.Blue - color.B) <= tolerance)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    [Fact]
+    public async Task SaveAnnotations_out_of_range_page_throws()
+    {
+        var path = CreateFixture("a.pdf", 1);
+
+        await Assert.ThrowsAsync<PdfOperationException>(
+            () => _engine.SaveAnnotationsAsync(
+                new SaveAnnotationsRequest(path, P("out.pdf"), [new SquareAnnotationEdit(9, 10, 10, 50, 50, Red)]),
+                cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task SaveAnnotations_square_round_trips_and_renders()
+    {
+        var path = CreateFixture("a.pdf", 1, doc =>
+        {
+            doc.Pages[0].Width = XUnit.FromPoint(300);
+            doc.Pages[0].Height = XUnit.FromPoint(300);
+        });
+        var output = P("out.pdf");
+        var annotation = new SquareAnnotationEdit(1, X: 50, Y: 50, Width: 100, Height: 80, Color: Red, StrokeWidthPoints: 6);
+
+        await _engine.SaveAnnotationsAsync(
+            new SaveAnnotationsRequest(path, output, [annotation]),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        using (var reopened = PdfReader.Open(output, PdfDocumentOpenMode.Import))
+        {
+            var page = reopened.Pages[0];
+            Assert.Equal(1, page.Annotations.Count);
+            var dict = ResolveAnnotationDictionary(page, 0);
+            Assert.Equal("/Square", dict.Elements.GetName("/Subtype"));
+            Assert.NotNull(dict.Elements.GetDictionary("/AP"));
+        }
+
+        var renderService = new PdfRenderService(NullLogger<PdfRenderService>.Instance);
+        var rendered = await renderService.RenderPageAsync(output, 1, 300, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.True(RenderedPageContainsColor(rendered.EncodedPng, Red));
+    }
+
+    [Fact]
+    public async Task SaveAnnotations_highlight_round_trips_and_renders()
+    {
+        var path = CreateFixture("a.pdf", 1, doc =>
+        {
+            doc.Pages[0].Width = XUnit.FromPoint(300);
+            doc.Pages[0].Height = XUnit.FromPoint(300);
+        });
+        var output = P("out.pdf");
+        var yellow = new AnnotationColor(255, 230, 0);
+        var quad = new QuadPoints(X1: 40, Y1: 120, X2: 160, Y2: 120, X3: 40, Y3: 100, X4: 160, Y4: 100);
+        var annotation = new HighlightAnnotationEdit(1, [quad], yellow, Opacity: 0.9);
+
+        await _engine.SaveAnnotationsAsync(
+            new SaveAnnotationsRequest(path, output, [annotation]),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        using (var reopened = PdfReader.Open(output, PdfDocumentOpenMode.Import))
+        {
+            var dict = ResolveAnnotationDictionary(reopened.Pages[0], 0);
+            Assert.Equal("/Highlight", dict.Elements.GetName("/Subtype"));
+            Assert.NotNull(dict.Elements["/QuadPoints"]);
+            Assert.NotNull(dict.Elements.GetDictionary("/AP"));
+        }
+
+        var renderService = new PdfRenderService(NullLogger<PdfRenderService>.Instance);
+        var rendered = await renderService.RenderPageAsync(output, 1, 300, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.True(RenderedPageContainsColor(rendered.EncodedPng, yellow, tolerance: 60));
+    }
+
+    [Fact]
+    public async Task SaveAnnotations_freetext_round_trips_and_renders()
+    {
+        var path = CreateFixture("a.pdf", 1, doc =>
+        {
+            doc.Pages[0].Width = XUnit.FromPoint(300);
+            doc.Pages[0].Height = XUnit.FromPoint(300);
+        });
+        var output = P("out.pdf");
+        var annotation = new FreeTextAnnotationEdit(1, X: 30, Y: 30, Width: 150, Height: 40, Text: "Note", Color: Red, FontSize: 18);
+
+        await _engine.SaveAnnotationsAsync(
+            new SaveAnnotationsRequest(path, output, [annotation]),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        using (var reopened = PdfReader.Open(output, PdfDocumentOpenMode.Import))
+        {
+            var dict = ResolveAnnotationDictionary(reopened.Pages[0], 0);
+            Assert.Equal("/FreeText", dict.Elements.GetName("/Subtype"));
+            Assert.Equal("Note", dict.Elements.GetString("/Contents"));
+            Assert.NotNull(dict.Elements.GetDictionary("/AP"));
+        }
+
+        var renderService = new PdfRenderService(NullLogger<PdfRenderService>.Instance);
+        var rendered = await renderService.RenderPageAsync(output, 1, 300, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.True(RenderedPageContainsColor(rendered.EncodedPng, Red));
+    }
+
+    [Fact]
+    public async Task SaveAnnotations_ink_round_trips_and_renders()
+    {
+        var path = CreateFixture("a.pdf", 1, doc =>
+        {
+            doc.Pages[0].Width = XUnit.FromPoint(300);
+            doc.Pages[0].Height = XUnit.FromPoint(300);
+        });
+        var output = P("out.pdf");
+        var stroke = new InkStroke([new InkPoint(50, 50), new InkPoint(100, 150), new InkPoint(150, 50)]);
+        var annotation = new InkAnnotationEdit(1, [stroke], Red, StrokeWidthPoints: 5);
+
+        await _engine.SaveAnnotationsAsync(
+            new SaveAnnotationsRequest(path, output, [annotation]),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        using (var reopened = PdfReader.Open(output, PdfDocumentOpenMode.Import))
+        {
+            var dict = ResolveAnnotationDictionary(reopened.Pages[0], 0);
+            Assert.Equal("/Ink", dict.Elements.GetName("/Subtype"));
+            Assert.NotNull(dict.Elements["/InkList"]);
+            Assert.NotNull(dict.Elements.GetDictionary("/AP"));
+        }
+
+        var renderService = new PdfRenderService(NullLogger<PdfRenderService>.Instance);
+        var rendered = await renderService.RenderPageAsync(output, 1, 300, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.True(RenderedPageContainsColor(rendered.EncodedPng, Red));
+    }
+
+    [Fact]
+    public async Task SaveAnnotations_multiple_annotations_across_pages()
+    {
+        var path = CreateFixture("a.pdf", 2, doc =>
+        {
+            doc.Pages[0].Width = XUnit.FromPoint(300);
+            doc.Pages[0].Height = XUnit.FromPoint(300);
+            doc.Pages[1].Width = XUnit.FromPoint(300);
+            doc.Pages[1].Height = XUnit.FromPoint(300);
+        });
+        var output = P("out.pdf");
+
+        await _engine.SaveAnnotationsAsync(
+            new SaveAnnotationsRequest(path, output,
+            [
+                new SquareAnnotationEdit(1, 10, 10, 50, 50, Red),
+                new SquareAnnotationEdit(2, 10, 10, 50, 50, Red),
+            ]),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        using var reopened = PdfReader.Open(output, PdfDocumentOpenMode.Import);
+        Assert.Equal(1, reopened.Pages[0].Annotations.Count);
+        Assert.Equal(1, reopened.Pages[1].Annotations.Count);
     }
 }
 

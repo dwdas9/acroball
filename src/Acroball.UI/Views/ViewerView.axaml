@@ -3,15 +3,21 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Acroball.UI.ViewModels"
+             xmlns:ann="using:Acroball.Domain.Annotations"
+             xmlns:conv="using:Acroball.UI.Converters"
              mc:Ignorable="d" d:DesignWidth="1040" d:DesignHeight="820"
              x:Class="Acroball.UI.Views.ViewerView"
              x:DataType="vm:ViewerViewModel">
 
-  <Grid RowDefinitions="Auto,Auto,*" Margin="32,32,32,0">
+  <UserControl.Resources>
+    <conv:AnnotationColorToBrushConverter x:Key="AnnotationColorBrush" />
+  </UserControl.Resources>
+
+  <Grid RowDefinitions="Auto,Auto,Auto,*" Margin="32,32,32,0">
 
     <StackPanel Grid.Row="0" Spacing="6" Margin="0,0,0,20">
       <TextBlock Classes="h1" Text="Viewer" />
-      <TextBlock Classes="caption" Text="Browse a PDF's pages in a continuous scroll." />
+      <TextBlock Classes="caption" Text="Browse a PDF's pages in a continuous scroll, and mark it up." />
     </StackPanel>
 
     <Border Grid.Row="1" Classes="card" Padding="20" CornerRadius="16" Margin="0,0,0,20">
@@ -47,7 +53,46 @@
       </StackPanel>
     </Border>
 
-    <Grid Grid.Row="2" ColumnDefinitions="Auto,*">
+    <Border Grid.Row="2" Classes="card" Padding="16" CornerRadius="16" Margin="0,0,0,20" IsVisible="{Binding HasDocument}">
+      <StackPanel Orientation="Horizontal" Spacing="20">
+
+        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+          <TextBlock Classes="caption" Text="Tool:" VerticalAlignment="Center" Margin="0,0,4,0" />
+          <Button Content="Select" Command="{Binding SelectNoneToolCommand}" />
+          <Button Content="Highlight" Command="{Binding SelectHighlightToolCommand}" />
+          <Button Content="Text" Command="{Binding SelectFreeTextToolCommand}" />
+          <Button Content="Ink" Command="{Binding SelectInkToolCommand}" />
+          <Button Content="Square" Command="{Binding SelectSquareToolCommand}" />
+          <TextBlock Classes="caption" Text="{Binding SelectedAnnotationTool, TargetNullValue=none}" Margin="8,0,0,0" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+          <TextBlock Classes="caption" Text="Color:" VerticalAlignment="Center" Margin="0,0,4,0" />
+          <ItemsControl ItemsSource="{x:Static vm:ViewerViewModel.AvailableColors}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="4" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="ann:AnnotationColor">
+                <Button Width="22" Height="22" Padding="0" CornerRadius="11"
+                        Background="{Binding Converter={StaticResource AnnotationColorBrush}}"
+                        Command="{Binding $parent[ItemsControl].((vm:ViewerViewModel)DataContext).SelectColorCommand}"
+                        CommandParameter="{Binding}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+
+        <Button Content="Save Annotations" Command="{Binding SaveAnnotationsCommand}" IsEnabled="{Binding HasPendingAnnotations}" VerticalAlignment="Center" />
+
+        <TextBlock Text="{Binding AnnotationsSaveMessage}" TextWrapping="Wrap" VerticalAlignment="Center"
+                   Classes="caption" />
+      </StackPanel>
+    </Border>
+
+    <Grid Grid.Row="3" ColumnDefinitions="Auto,*">
 
       <Border Grid.Column="0" Width="220" Margin="0,0,16,32"
               IsVisible="{Binding HasOutline}"
@@ -97,6 +142,36 @@
                   <TextBlock Text="{Binding RenderError}"
                              HorizontalAlignment="Center" VerticalAlignment="Center"
                              Classes="caption" Opacity="0.7" />
+                  <Canvas Background="Transparent"
+                          PointerPressed="OnPageCanvasPointerPressed"
+                          PointerMoved="OnPageCanvasPointerMoved"
+                          PointerReleased="OnPageCanvasPointerReleased">
+                    <ItemsControl ItemsSource="{Binding PreviewShapes}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <Canvas />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AnnotationPreviewShape">
+                          <Panel Canvas.Left="{Binding Left}" Canvas.Top="{Binding Top}">
+                            <Border IsVisible="{Binding IsBox}"
+                                    Width="{Binding Width}" Height="{Binding Height}"
+                                    BorderBrush="{Binding Stroke}" BorderThickness="2"
+                                    Background="{Binding Fill}">
+                              <TextBlock Text="{Binding Text}" IsVisible="{Binding IsFreeText}"
+                                         Margin="4" FontSize="12" TextWrapping="Wrap"
+                                         Foreground="{Binding Stroke}" />
+                            </Border>
+                            <Polyline IsVisible="{Binding IsPolyline}"
+                                      Points="{Binding Points}"
+                                      Stroke="{Binding Stroke}" StrokeThickness="3"
+                                      StrokeLineCap="Round" StrokeJoin="Round" />
+                          </Panel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </Canvas>
                 </Panel>
               </Border>
               <TextBlock Text="{Binding PageNumber}" HorizontalAlignment="Center" Classes="caption" />

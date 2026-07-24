@@ -1,5 +1,7 @@
 using Acroball.Application.Abstractions;
+using Acroball.Application.Jobs;
 using Acroball.Domain;
+using Acroball.Domain.Annotations;
 using Acroball.Domain.Exceptions;
 using Acroball.UI.Services;
 using Acroball.UI.ViewModels;
@@ -293,9 +295,173 @@ public sealed class ViewerViewModelTests
         Assert.Equal([3], raised);
     }
 
-    private static ViewerViewModel CreateViewModel(IPdfEngine? pdfEngine = null, IPdfRenderService? pdfRenderService = null)
+    [Fact]
+    public async Task AddSquareAnnotation_adds_to_page_and_sets_pending()
+    {
+        using var fixture = new PdfFixture();
+        var alpha = fixture.CreateFile("Alpha.pdf");
+        var pdfEngine = new Mock<IPdfEngine>();
+        pdfEngine.Setup(x => x.GetPagesAsync(alpha, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PdfPageInfo> { new(1, 300, 400, Rotation.None) });
+
+        var viewModel = CreateViewModel(pdfEngine: pdfEngine.Object);
+        await viewModel.OpenFileAsync(alpha);
+        var page = viewModel.Pages[0];
+
+        Assert.False(viewModel.HasPendingAnnotations);
+
+        viewModel.AddSquareAnnotation(page, (10, 10, 50, 40), (5, 5, 100, 80));
+
+        Assert.True(viewModel.HasPendingAnnotations);
+        var edit = Assert.IsType<SquareAnnotationEdit>(Assert.Single(page.Annotations));
+        Assert.Equal(1, edit.PageNumber);
+        Assert.Equal(10, edit.X);
+        Assert.Equal(50, edit.Width);
+        Assert.Single(page.PreviewShapes);
+    }
+
+    [Fact]
+    public async Task AddHighlightAnnotation_adds_to_page()
+    {
+        using var fixture = new PdfFixture();
+        var alpha = fixture.CreateFile("Alpha.pdf");
+        var pdfEngine = new Mock<IPdfEngine>();
+        pdfEngine.Setup(x => x.GetPagesAsync(alpha, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PdfPageInfo> { new(1, 300, 400, Rotation.None) });
+
+        var viewModel = CreateViewModel(pdfEngine: pdfEngine.Object);
+        await viewModel.OpenFileAsync(alpha);
+        var page = viewModel.Pages[0];
+
+        var quad = new QuadPoints(10, 40, 60, 40, 10, 20, 60, 20);
+        viewModel.AddHighlightAnnotation(page, quad, (10, 10, 50, 20));
+
+        var edit = Assert.IsType<HighlightAnnotationEdit>(Assert.Single(page.Annotations));
+        Assert.Single(edit.Quads);
+        Assert.Equal(viewModel.SelectedOpacity, edit.Opacity);
+    }
+
+    [Fact]
+    public async Task AddFreeTextAnnotation_with_blank_text_is_ignored()
+    {
+        using var fixture = new PdfFixture();
+        var alpha = fixture.CreateFile("Alpha.pdf");
+        var pdfEngine = new Mock<IPdfEngine>();
+        pdfEngine.Setup(x => x.GetPagesAsync(alpha, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PdfPageInfo> { new(1, 300, 400, Rotation.None) });
+
+        var viewModel = CreateViewModel(pdfEngine: pdfEngine.Object);
+        await viewModel.OpenFileAsync(alpha);
+        var page = viewModel.Pages[0];
+
+        viewModel.AddFreeTextAnnotation(page, (10, 10, 100, 30), (10, 10, 100, 30), "   ");
+
+        Assert.Empty(page.Annotations);
+        Assert.False(viewModel.HasPendingAnnotations);
+    }
+
+    [Fact]
+    public async Task AddInkAnnotation_with_fewer_than_two_points_is_ignored()
+    {
+        using var fixture = new PdfFixture();
+        var alpha = fixture.CreateFile("Alpha.pdf");
+        var pdfEngine = new Mock<IPdfEngine>();
+        pdfEngine.Setup(x => x.GetPagesAsync(alpha, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PdfPageInfo> { new(1, 300, 400, Rotation.None) });
+
+        var viewModel = CreateViewModel(pdfEngine: pdfEngine.Object);
+        await viewModel.OpenFileAsync(alpha);
+        var page = viewModel.Pages[0];
+
+        viewModel.AddInkAnnotation(page, new InkStroke([new InkPoint(1, 1)]), new Avalonia.Points());
+
+        Assert.Empty(page.Annotations);
+    }
+
+    [Fact]
+    public async Task SaveAnnotationsAsync_with_no_pending_annotations_does_not_prompt_for_output()
+    {
+        using var fixture = new PdfFixture();
+        var alpha = fixture.CreateFile("Alpha.pdf");
+        var pdfEngine = new Mock<IPdfEngine>();
+        pdfEngine.Setup(x => x.GetPagesAsync(alpha, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PdfPageInfo> { new(1, 300, 400, Rotation.None) });
+
+        var fileDialog = new Mock<IFileDialogService>();
+        var viewModel = CreateViewModel(pdfEngine: pdfEngine.Object, fileDialogService: fileDialog.Object);
+        await viewModel.OpenFileAsync(alpha);
+
+        await viewModel.SaveAnnotationsAsync();
+
+        fileDialog.Verify(x => x.PickSaveFileAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SaveAnnotationsAsync_success_sets_result_message()
+    {
+        using var fixture = new PdfFixture();
+        var alpha = fixture.CreateFile("Alpha.pdf");
+        var pdfEngine = new Mock<IPdfEngine>();
+        pdfEngine.Setup(x => x.GetPagesAsync(alpha, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PdfPageInfo> { new(1, 300, 400, Rotation.None) });
+
+        var fileDialog = new Mock<IFileDialogService>();
+        fileDialog.Setup(x => x.PickSaveFileAsync(It.IsAny<string>())).ReturnsAsync(fixture.DirectoryPath + "\\Alpha-annotated.pdf");
+
+        var jobExecutor = new Mock<IJobExecutor>();
+        jobExecutor
+            .Setup(x => x.ExecuteAsync(
+                It.IsAny<SaveAnnotationsJobRequest>(),
+                It.IsAny<Func<SaveAnnotationsJobRequest, JobExecutionContext, CancellationToken, Task<JobExecutionResult>>>(),
+                It.IsAny<IProgress<JobProgress>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new JobExecutionResult(JobOutcome.Succeeded, null, "Added 1 annotation(s)", "out.pdf", TimeSpan.FromSeconds(1)));
+
+        var viewModel = CreateViewModel(pdfEngine: pdfEngine.Object, jobExecutor: jobExecutor.Object, fileDialogService: fileDialog.Object);
+        await viewModel.OpenFileAsync(alpha);
+        viewModel.AddSquareAnnotation(viewModel.Pages[0], (10, 10, 50, 40), (5, 5, 100, 80));
+
+        await viewModel.SaveAnnotationsAsync();
+
+        Assert.True(viewModel.AnnotationsSaveSucceeded);
+        Assert.Equal("Added 1 annotation(s)", viewModel.AnnotationsSaveMessage);
+        Assert.False(viewModel.IsSavingAnnotations);
+    }
+
+    [Fact]
+    public async Task SaveAnnotationsAsync_when_user_cancels_output_picker_does_not_call_executor()
+    {
+        using var fixture = new PdfFixture();
+        var alpha = fixture.CreateFile("Alpha.pdf");
+        var pdfEngine = new Mock<IPdfEngine>();
+        pdfEngine.Setup(x => x.GetPagesAsync(alpha, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PdfPageInfo> { new(1, 300, 400, Rotation.None) });
+
+        var fileDialog = new Mock<IFileDialogService>();
+        fileDialog.Setup(x => x.PickSaveFileAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
+
+        var jobExecutor = new Mock<IJobExecutor>();
+        var viewModel = CreateViewModel(pdfEngine: pdfEngine.Object, jobExecutor: jobExecutor.Object, fileDialogService: fileDialog.Object);
+        await viewModel.OpenFileAsync(alpha);
+        viewModel.AddSquareAnnotation(viewModel.Pages[0], (10, 10, 50, 40), (5, 5, 100, 80));
+
+        await viewModel.SaveAnnotationsAsync();
+
+        jobExecutor.Verify(
+            x => x.ExecuteAsync(
+                It.IsAny<SaveAnnotationsJobRequest>(),
+                It.IsAny<Func<SaveAnnotationsJobRequest, JobExecutionContext, CancellationToken, Task<JobExecutionResult>>>(),
+                It.IsAny<IProgress<JobProgress>>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+        Assert.Null(viewModel.AnnotationsSaveSucceeded);
+    }
+
+    private static ViewerViewModel CreateViewModel(IPdfEngine? pdfEngine = null, IPdfRenderService? pdfRenderService = null, IJobExecutor? jobExecutor = null, IFileDialogService? fileDialogService = null)
     {
         pdfEngine ??= new Mock<IPdfEngine>().Object;
+        jobExecutor ??= new Mock<IJobExecutor>().Object;
+        fileDialogService ??= new StubFileDialogService();
 
         if (pdfRenderService is null)
         {
@@ -308,7 +474,8 @@ public sealed class ViewerViewModelTests
         return new ViewerViewModel(
             pdfEngine,
             pdfRenderService,
-            new StubFileDialogService(),
+            jobExecutor,
+            fileDialogService,
             NullLogger<ViewerViewModel>.Instance);
     }
 

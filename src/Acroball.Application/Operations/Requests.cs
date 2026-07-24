@@ -1,4 +1,5 @@
 ﻿using Acroball.Domain;
+using Acroball.Domain.Annotations;
 
 namespace Acroball.Application.Operations;
 
@@ -126,5 +127,16 @@ public sealed record UpdateMetadataRequest(
     string InputFile,
     string OutputFile,
     DocumentMetadata Metadata,
+    string? Password = null);
+
+/// <summary>Add annotations to a PDF, writing the result to a new file.</summary>
+/// <param name="InputFile">Absolute path of the source file.</param>
+/// <param name="OutputFile">Absolute path of the file to create.</param>
+/// <param name="Annotations">The annotations to add, across one or more pages.</param>
+/// <param name="Password">Password for the source file, when encrypted.</param>
+public sealed record SaveAnnotationsRequest(
+    string InputFile,
+    string OutputFile,
+    IReadOnlyList<AnnotationEdit> Annotations,
     string? Password = null);
 

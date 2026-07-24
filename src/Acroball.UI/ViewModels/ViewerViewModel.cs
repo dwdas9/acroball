@@ -1,6 +1,9 @@
 using System.Collections.ObjectModel;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Acroball.Application.Abstractions;
+using Acroball.Application.Jobs;
+using Acroball.Domain.Annotations;
 using Acroball.Domain.Exceptions;
 using Acroball.UI.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -10,13 +13,25 @@ using Microsoft.Extensions.Logging;
 namespace Acroball.UI.ViewModels;
 
 /// <summary>
-/// Viewer tool view model: opens one PDF and displays it as a continuous,
-/// virtualized scroll of pages rendered through <see cref="IPdfRenderService"/>.
+/// Viewer tool view model: opens one PDF, displays it as a continuous,
+/// virtualized scroll of pages rendered through <see cref="IPdfRenderService"/>,
+/// and lets the user mark it up with annotations (ADR-0013) saved via
+/// <see cref="SaveAnnotationsJob"/>.
 /// </summary>
 public sealed partial class ViewerViewModel : PageViewModel
 {
+    /// <summary>Colors offered on the annotation toolbar.</summary>
+    public static IReadOnlyList<AnnotationColor> AvailableColors { get; } =
+    [
+        new(220, 38, 38),   // red
+        new(217, 164, 6),   // amber
+        new(22, 163, 74),   // green
+        new(37, 99, 235),   // blue
+    ];
+
     private readonly IPdfEngine _pdfEngine;
     private readonly IPdfRenderService _pdfRenderService;
+    private readonly IJobExecutor _jobExecutor;
     private readonly IFileDialogService _fileDialogService;
     private readonly ILogger<ViewerViewModel> _logger;
     private string? _openPassword;
@@ -25,16 +40,19 @@ public sealed partial class ViewerViewModel : PageViewModel
     public ViewerViewModel(
         IPdfEngine pdfEngine,
         IPdfRenderService pdfRenderService,
+        IJobExecutor jobExecutor,
         IFileDialogService fileDialogService,
         ILogger<ViewerViewModel> logger)
     {
         _pdfEngine = pdfEngine;
         _pdfRenderService = pdfRenderService;
+        _jobExecutor = jobExecutor;
         _fileDialogService = fileDialogService;
         _logger = logger;
 
         Pages = [];
         Outline = [];
+        SelectedColor = AvailableColors[0];
     }
 
     /// <inheritdoc />
@@ -96,6 +114,180 @@ public sealed partial class ViewerViewModel : PageViewModel
 
     /// <summary>Requests that the view scroll to <paramref name="pageNumber"/>, e.g. in response to a bookmark click.</summary>
     public void RequestScrollToPage(int pageNumber) => ScrollToPageRequested?.Invoke(pageNumber);
+
+    /// <summary>The annotation tool currently armed for drawing, or null when clicking/scrolling normally.</summary>
+    [ObservableProperty]
+    private AnnotationKind? _selectedAnnotationTool;
+
+    /// <summary>Color used for newly drawn annotations.</summary>
+    [ObservableProperty]
+    private AnnotationColor _selectedColor;
+
+    /// <summary>Fill/stroke opacity used for newly drawn Highlight annotations.</summary>
+    [ObservableProperty]
+    private double _selectedOpacity = 0.4;
+
+    /// <summary>Stroke width, in PDF points, used for newly drawn Square/Ink annotations.</summary>
+    [ObservableProperty]
+    private double _selectedStrokeWidth = 3;
+
+    /// <summary>Whether any page has an annotation waiting to be saved.</summary>
+    public bool HasPendingAnnotations => Pages.Any(p => p.Annotations.Count > 0);
+
+    /// <summary>Whether an annotation save is in progress.</summary>
+    [ObservableProperty]
+    private bool _isSavingAnnotations;
+
+    /// <summary>The latest annotation-save result message, success or failure.</summary>
+    [ObservableProperty]
+    private string? _annotationsSaveMessage;
+
+    /// <summary>Whether the latest annotation save succeeded; null before any save has run.</summary>
+    [ObservableProperty]
+    private bool? _annotationsSaveSucceeded;
+
+    [RelayCommand]
+    internal void SelectHighlightTool() => SelectedAnnotationTool = AnnotationKind.Highlight;
+
+    [RelayCommand]
+    internal void SelectFreeTextTool() => SelectedAnnotationTool = AnnotationKind.FreeText;
+
+    [RelayCommand]
+    internal void SelectInkTool() => SelectedAnnotationTool = AnnotationKind.Ink;
+
+    [RelayCommand]
+    internal void SelectSquareTool() => SelectedAnnotationTool = AnnotationKind.Square;
+
+    [RelayCommand]
+    internal void SelectNoneTool() => SelectedAnnotationTool = null;
+
+    [RelayCommand]
+    internal void SelectColor(AnnotationColor color) => SelectedColor = color;
+
+    /// <summary>
+    /// Commits a Square annotation. <paramref name="pdfRect"/> is the
+    /// already-mapped PDF-space rectangle (see <see cref="Services.AnnotationCoordinateMapper"/>);
+    /// <paramref name="screenRect"/> is the same interaction's raw screen-space
+    /// rectangle, used only for the live preview.
+    /// </summary>
+    public void AddSquareAnnotation(ViewerPageViewModel page, (double X, double Y, double Width, double Height) pdfRect, (double Left, double Top, double Width, double Height) screenRect)
+    {
+        page.Annotations.Add(new SquareAnnotationEdit(page.PageNumber, pdfRect.X, pdfRect.Y, pdfRect.Width, pdfRect.Height, SelectedColor, StrokeWidthPoints: SelectedStrokeWidth));
+        page.PreviewShapes.Add(new AnnotationPreviewShape
+        {
+            Kind = AnnotationKind.Square,
+            Left = screenRect.Left,
+            Top = screenRect.Top,
+            Width = screenRect.Width,
+            Height = screenRect.Height,
+            Stroke = ToBrush(SelectedColor),
+        });
+        OnPropertyChanged(nameof(HasPendingAnnotations));
+    }
+
+    /// <summary>Commits a Highlight annotation covering one rectangular quad.</summary>
+    public void AddHighlightAnnotation(ViewerPageViewModel page, QuadPoints pdfQuad, (double Left, double Top, double Width, double Height) screenRect)
+    {
+        page.Annotations.Add(new HighlightAnnotationEdit(page.PageNumber, [pdfQuad], SelectedColor, Opacity: SelectedOpacity));
+        page.PreviewShapes.Add(new AnnotationPreviewShape
+        {
+            Kind = AnnotationKind.Highlight,
+            Left = screenRect.Left,
+            Top = screenRect.Top,
+            Width = screenRect.Width,
+            Height = screenRect.Height,
+            Fill = ToBrush(SelectedColor, SelectedOpacity),
+        });
+        OnPropertyChanged(nameof(HasPendingAnnotations));
+    }
+
+    /// <summary>Commits a FreeText annotation with a fixed position and size.</summary>
+    public void AddFreeTextAnnotation(ViewerPageViewModel page, (double X, double Y, double Width, double Height) pdfRect, (double Left, double Top, double Width, double Height) screenRect, string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        page.Annotations.Add(new FreeTextAnnotationEdit(page.PageNumber, pdfRect.X, pdfRect.Y, pdfRect.Width, pdfRect.Height, text, SelectedColor));
+        page.PreviewShapes.Add(new AnnotationPreviewShape
+        {
+            Kind = AnnotationKind.FreeText,
+            Left = screenRect.Left,
+            Top = screenRect.Top,
+            Width = screenRect.Width,
+            Height = screenRect.Height,
+            Stroke = ToBrush(SelectedColor),
+            Text = text,
+        });
+        OnPropertyChanged(nameof(HasPendingAnnotations));
+    }
+
+    /// <summary>Commits an Ink annotation with a single freehand stroke.</summary>
+    public void AddInkAnnotation(ViewerPageViewModel page, InkStroke pdfStroke, Avalonia.Points screenPoints)
+    {
+        if (pdfStroke.Points.Count < 2)
+        {
+            return;
+        }
+
+        page.Annotations.Add(new InkAnnotationEdit(page.PageNumber, [pdfStroke], SelectedColor, StrokeWidthPoints: SelectedStrokeWidth));
+        page.PreviewShapes.Add(new AnnotationPreviewShape
+        {
+            Kind = AnnotationKind.Ink,
+            Points = screenPoints,
+            Stroke = ToBrush(SelectedColor),
+        });
+        OnPropertyChanged(nameof(HasPendingAnnotations));
+    }
+
+    /// <summary>Gathers every page's pending annotations and writes them to a new file the user chooses.</summary>
+    public async Task SaveAnnotationsAsync()
+    {
+        if (CurrentFile is null)
+        {
+            return;
+        }
+
+        var allAnnotations = Pages.SelectMany(p => p.Annotations).ToList();
+        if (allAnnotations.Count == 0)
+        {
+            return;
+        }
+
+        var suggestedName = Path.GetFileNameWithoutExtension(CurrentFile) + "-annotated.pdf";
+        var outputPath = await _fileDialogService.PickSaveFileAsync(suggestedName).ConfigureAwait(true);
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            return;
+        }
+
+        IsSavingAnnotations = true;
+        AnnotationsSaveMessage = null;
+        AnnotationsSaveSucceeded = null;
+        try
+        {
+            var request = new SaveAnnotationsJobRequest(CurrentFile, allAnnotations, outputPath, _openPassword);
+            var result = await _jobExecutor.ExecuteAsync(
+                request,
+                (req, context, ct) => new SaveAnnotationsJob(_pdfEngine).ExecuteAsync(req, context, ct),
+                progress: null,
+                CancellationToken.None).ConfigureAwait(true);
+
+            AnnotationsSaveSucceeded = result.Succeeded;
+            AnnotationsSaveMessage = result.Succeeded ? result.OutputSummary : result.ErrorMessage;
+        }
+        finally
+        {
+            IsSavingAnnotations = false;
+        }
+    }
+
+    [RelayCommand]
+    internal async Task SaveAnnotationsCommand() => await SaveAnnotationsAsync().ConfigureAwait(true);
+
+    private static IBrush ToBrush(AnnotationColor color, double opacity = 1.0)
+        => new SolidColorBrush(Color.FromArgb((byte)Math.Clamp(opacity * 255, 0, 255), color.R, color.G, color.B));
 
     /// <summary>Lets the user pick a PDF file to open.</summary>
     public async Task PickFileAsync()

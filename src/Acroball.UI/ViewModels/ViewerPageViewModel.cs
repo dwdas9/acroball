@@ -1,5 +1,7 @@
+using System.Collections.ObjectModel;
 using Avalonia.Media.Imaging;
 using Acroball.Domain;
+using Acroball.Domain.Annotations;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Acroball.UI.ViewModels;
@@ -34,6 +36,12 @@ public sealed partial class ViewerPageViewModel : ObservableObject
 
     /// <summary>The page's stored rotation (already reflected by the rendered bitmap).</summary>
     public Rotation Rotation { get; }
+
+    /// <summary>Annotations committed on this page, pending a save. PDF-space, ready to hand to <see cref="Acroball.Application.Operations.SaveAnnotationsRequest"/>.</summary>
+    public ObservableCollection<AnnotationEdit> Annotations { get; } = [];
+
+    /// <summary>Screen-space visual stand-ins for <see cref="Annotations"/>, one per entry, in the same order.</summary>
+    public ObservableCollection<AnnotationPreviewShape> PreviewShapes { get; } = [];
 
     /// <summary>
     /// Reserved on-screen height at <see cref="DisplayWidthPx"/>, computed from

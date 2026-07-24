@@ -89,5 +89,11 @@ public interface IPdfEngine
         UpdateMetadataRequest request,
         IProgress<OperationProgress>? progress = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Adds annotations to a document. See <see cref="SaveAnnotationsRequest"/>.</summary>
+    Task SaveAnnotationsAsync(
+        SaveAnnotationsRequest request,
+        IProgress<OperationProgress>? progress = null,
+        CancellationToken cancellationToken = default);
 }
 

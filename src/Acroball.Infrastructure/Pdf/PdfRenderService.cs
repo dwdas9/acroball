@@ -64,7 +64,10 @@ public sealed class PdfRenderService : IPdfRenderService
     private RenderedPageImage RenderCore(string filePath, int pageNumber, int targetWidthPx, string? password)
     {
         var bytes = File.ReadAllBytes(filePath);
-        var options = new RenderOptions(Width: targetWidthPx, WithAspectRatio: true);
+        // WithAnnotations defaults to false in PDFtoImage; without it, annotations
+        // added by SaveAnnotationsAsync (ADR-0013) would round-trip correctly into
+        // the file but never actually be visible in this app's own render path.
+        var options = new RenderOptions(Width: targetWidthPx, WithAspectRatio: true, WithAnnotations: true);
 
         try
         {

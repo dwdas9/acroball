@@ -1,10 +1,14 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System.Globalization;
+using System.Text;
+using Microsoft.Extensions.Logging;
+using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 using SkiaSharp;
 using Acroball.Application.Abstractions;
 using Acroball.Application.Operations;
 using Acroball.Domain;
+using Acroball.Domain.Annotations;
 using Acroball.Domain.Exceptions;
 
 namespace Acroball.Infrastructure.Pdf;
@@ -497,6 +501,48 @@ public sealed class PdfSharpEngine : IPdfEngine
             },
             cancellationToken);
 
+    /// <inheritdoc />
+    public Task SaveAnnotationsAsync(
+        SaveAnnotationsRequest request,
+        IProgress<OperationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+        => Task.Run(
+            () =>
+            {
+                if (request.Annotations.Count == 0)
+                {
+                    throw new PdfOperationException("No annotations were specified.");
+                }
+
+                using var document = Open(request.InputFile, request.Password, PdfDocumentOpenMode.Modify);
+
+                var annotationsDone = 0;
+                foreach (var annotation in request.Annotations)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (annotation.PageNumber < 1 || annotation.PageNumber > document.PageCount)
+                    {
+                        throw new PdfOperationException(
+                            $"Page {annotation.PageNumber} is beyond the last page of \"{Path.GetFileName(request.InputFile)}\" ({document.PageCount}).");
+                    }
+
+                    AddAnnotation(document, document.Pages[annotation.PageNumber - 1], annotation);
+
+                    annotationsDone++;
+                    progress?.Report(new OperationProgress(
+                        (double)annotationsDone / request.Annotations.Count,
+                        $"Adding annotation {annotationsDone}/{request.Annotations.Count}"));
+                }
+
+                SaveAtomic(document, request.OutputFile, cancellationToken);
+                progress?.Report(new OperationProgress(1.0, "Done"));
+                _logger.LogInformation(
+                    "Added {Count} annotation(s) to {Input} into {Output}",
+                    request.Annotations.Count, request.InputFile, request.OutputFile);
+            },
+            cancellationToken);
+
     /// <summary>
     /// Recompresses qualifying images across every page (and one level of
     /// nested Form XObjects) of <paramref name="document"/> in place. See
@@ -720,6 +766,287 @@ public sealed class PdfSharpEngine : IPdfEngine
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Local geometry and content-stream bytes for one annotation's normal
+    /// appearance, before it is wrapped into a Form XObject and an annotation
+    /// dictionary. <see cref="X"/>/<see cref="Y"/>/<see cref="Width"/>/<see cref="Height"/>
+    /// are page-space (PDF points, bottom-left origin); <see cref="ContentBytes"/>
+    /// is drawn in the appearance's own local space, i.e. relative to (X, Y).
+    /// </summary>
+    private readonly record struct AnnotationAppearance(
+        double X, double Y, double Width, double Height, byte[] ContentBytes, PdfDictionary? Resources);
+
+    /// <summary>
+    /// Builds and attaches one annotation to <paramref name="page"/>. PDFsharp
+    /// 6.2.4 has no public class for Highlight/FreeText/Ink/Square annotations
+    /// (only Link, RubberStamp and the sticky-note-style Text exist, and the
+    /// abstract <c>PdfAnnotation</c> base has only a protected constructor) —
+    /// see ADR-0013 for the confirmed API inventory this is based on. Every
+    /// kind here is therefore hand-authored via the same low-level
+    /// <see cref="PdfDictionary"/> API <see cref="TryRecompressImage"/> already
+    /// uses to mutate existing objects, extended to originate brand-new ones.
+    /// </summary>
+    private static void AddAnnotation(PdfDocument document, PdfPage page, AnnotationEdit annotation)
+    {
+        PdfDictionary annotDict;
+        switch (annotation)
+        {
+            case HighlightAnnotationEdit highlight:
+                annotDict = CreateAppearanceAnnotation(document, "/Highlight", BuildHighlightAppearance(document, highlight), highlight.Color, highlight.Opacity);
+                annotDict.Elements["/QuadPoints"] = BuildNumberArray(document, highlight.Quads.SelectMany(q => new[] { q.X1, q.Y1, q.X2, q.Y2, q.X3, q.Y3, q.X4, q.Y4 }));
+                break;
+            case FreeTextAnnotationEdit freeText:
+                annotDict = CreateAppearanceAnnotation(document, "/FreeText", BuildFreeTextAppearance(document, freeText), freeText.Color, opacity: 1.0);
+                annotDict.Elements.SetString("/Contents", freeText.Text);
+                break;
+            case InkAnnotationEdit ink:
+                annotDict = CreateAppearanceAnnotation(document, "/Ink", BuildInkAppearance(ink), ink.Color, opacity: 1.0);
+                annotDict.Elements["/InkList"] = BuildInkListArray(document, ink.Strokes);
+                break;
+            case SquareAnnotationEdit square:
+                annotDict = CreateAppearanceAnnotation(document, "/Square", BuildSquareAppearance(square), square.Color, opacity: 1.0);
+                break;
+            default:
+                throw new PdfOperationException($"Unsupported annotation kind: {annotation.GetType().Name}.");
+        }
+
+        page.Annotations.Elements.Add(annotDict);
+    }
+
+    /// <summary>
+    /// Wraps one appearance as a Form XObject and an annotation dictionary,
+    /// registers both as indirect objects (required for the stream, and for
+    /// <c>/Annots</c> to reference it by indirect reference the way every
+    /// real-world PDF and PDFsharp's own typed annotations do), and returns
+    /// the annotation dictionary — not yet attached to any page.
+    /// </summary>
+    private static PdfDictionary CreateAppearanceAnnotation(
+        PdfDocument document, string subtype, AnnotationAppearance appearance, AnnotationColor color, double opacity)
+    {
+        var formDict = new PdfDictionary(document);
+        formDict.Elements.SetName("/Type", "/XObject");
+        formDict.Elements.SetName("/Subtype", "/Form");
+        formDict.Elements.SetValue("/BBox", new PdfRectangle(new XRect(0, 0, appearance.Width, appearance.Height)));
+        if (appearance.Resources is not null)
+        {
+            formDict.Elements["/Resources"] = appearance.Resources;
+        }
+
+        formDict.CreateStream(appearance.ContentBytes);
+        document.Internals.AddObject(formDict);
+
+        var annotDict = new PdfDictionary(document);
+        annotDict.Elements.SetName("/Type", "/Annot");
+        annotDict.Elements.SetName("/Subtype", subtype);
+        annotDict.Elements.SetValue("/Rect", new PdfRectangle(new XRect(appearance.X, appearance.Y, appearance.Width, appearance.Height)));
+        annotDict.Elements.SetInteger("/F", 4); // Print flag: keeps the annotation visible in print/export paths, not just on-screen.
+        annotDict.Elements["/C"] = BuildNumberArray(document, [color.R / 255.0, color.G / 255.0, color.B / 255.0]);
+        if (opacity < 1.0)
+        {
+            annotDict.Elements.SetReal("/CA", opacity);
+        }
+
+        var apDict = new PdfDictionary(document);
+        apDict.Elements["/N"] = formDict.Reference;
+        annotDict.Elements["/AP"] = apDict;
+        document.Internals.AddObject(annotDict);
+
+        return annotDict;
+    }
+
+    private static AnnotationAppearance BuildSquareAppearance(SquareAnnotationEdit square)
+    {
+        var inset = square.StrokeWidthPoints / 2;
+        var width = Math.Max(0, square.Width - (2 * inset));
+        var height = Math.Max(0, square.Height - (2 * inset));
+
+        var sb = new StringBuilder();
+        if (square.FillColor is { } fill)
+        {
+            AppendColorOperator(sb, fill, stroke: false);
+            AppendRectOperator(sb, inset, inset, width, height, "f");
+        }
+
+        sb.Append(FormatNumber(square.StrokeWidthPoints)).Append(" w\n");
+        AppendColorOperator(sb, square.Color, stroke: true);
+        AppendRectOperator(sb, inset, inset, width, height, "S");
+
+        return new AnnotationAppearance(square.X, square.Y, square.Width, square.Height, Encoding.ASCII.GetBytes(sb.ToString()), Resources: null);
+    }
+
+    private static AnnotationAppearance BuildHighlightAppearance(PdfDocument document, HighlightAnnotationEdit highlight)
+    {
+        if (highlight.Quads.Count == 0)
+        {
+            throw new PdfOperationException("A highlight annotation needs at least one quad.");
+        }
+
+        var xs = highlight.Quads.SelectMany(q => new[] { q.X1, q.X2, q.X3, q.X4 }).ToList();
+        var ys = highlight.Quads.SelectMany(q => new[] { q.Y1, q.Y2, q.Y3, q.Y4 }).ToList();
+        var minX = xs.Min();
+        var minY = ys.Min();
+
+        var sb = new StringBuilder();
+        sb.Append("/GS1 gs\n");
+        AppendColorOperator(sb, highlight.Color, stroke: false);
+        foreach (var quad in highlight.Quads)
+        {
+            // Trace the quad TL -> TR -> BR -> BL so the fill covers the full
+            // rectangle regardless of the PDF-spec point ordering convention.
+            sb.Append(FormatNumber(quad.X1 - minX)).Append(' ').Append(FormatNumber(quad.Y1 - minY)).Append(" m\n");
+            sb.Append(FormatNumber(quad.X2 - minX)).Append(' ').Append(FormatNumber(quad.Y2 - minY)).Append(" l\n");
+            sb.Append(FormatNumber(quad.X4 - minX)).Append(' ').Append(FormatNumber(quad.Y4 - minY)).Append(" l\n");
+            sb.Append(FormatNumber(quad.X3 - minX)).Append(' ').Append(FormatNumber(quad.Y3 - minY)).Append(" l\n");
+            sb.Append("h f\n");
+        }
+
+        var resources = new PdfDictionary(document);
+        var extGStateResources = new PdfDictionary(document);
+        var gs1 = new PdfDictionary(document);
+        gs1.Elements.SetName("/Type", "/ExtGState");
+        gs1.Elements.SetReal("/ca", highlight.Opacity);
+        extGStateResources.Elements["/GS1"] = gs1;
+        resources.Elements["/ExtGState"] = extGStateResources;
+
+        return new AnnotationAppearance(minX, minY, xs.Max() - minX, ys.Max() - minY, Encoding.ASCII.GetBytes(sb.ToString()), resources);
+    }
+
+    private static AnnotationAppearance BuildFreeTextAppearance(PdfDocument document, FreeTextAnnotationEdit freeText)
+    {
+        const double padding = 4;
+
+        var sb = new StringBuilder();
+        AppendColorOperator(sb, freeText.Color, stroke: false);
+        sb.Append("BT\n/Helv ").Append(FormatNumber(freeText.FontSize)).Append(" Tf\n");
+        sb.Append(FormatNumber(padding)).Append(' ')
+          .Append(FormatNumber(Math.Max(0, freeText.Height - freeText.FontSize - padding))).Append(" Td\n");
+        sb.Append('(').Append(EscapePdfString(freeText.Text)).Append(") Tj\nET\n");
+
+        var resources = new PdfDictionary(document);
+        var fontResources = new PdfDictionary(document);
+        var helvetica = new PdfDictionary(document);
+        helvetica.Elements.SetName("/Type", "/Font");
+        helvetica.Elements.SetName("/Subtype", "/Type1");
+        helvetica.Elements.SetName("/BaseFont", "/Helvetica");
+        fontResources.Elements["/Helv"] = helvetica;
+        resources.Elements["/Font"] = fontResources;
+
+        return new AnnotationAppearance(freeText.X, freeText.Y, freeText.Width, freeText.Height, Encoding.ASCII.GetBytes(sb.ToString()), resources);
+    }
+
+    private static AnnotationAppearance BuildInkAppearance(InkAnnotationEdit ink)
+    {
+        var allPoints = ink.Strokes.SelectMany(s => s.Points).ToList();
+        if (allPoints.Count == 0)
+        {
+            throw new PdfOperationException("An ink annotation needs at least one stroke with at least one point.");
+        }
+
+        var half = ink.StrokeWidthPoints / 2;
+        var minX = allPoints.Min(p => p.X) - half;
+        var minY = allPoints.Min(p => p.Y) - half;
+        var maxX = allPoints.Max(p => p.X) + half;
+        var maxY = allPoints.Max(p => p.Y) + half;
+
+        var sb = new StringBuilder();
+        sb.Append(FormatNumber(ink.StrokeWidthPoints)).Append(" w\n1 J 1 j\n");
+        AppendColorOperator(sb, ink.Color, stroke: true);
+        foreach (var stroke in ink.Strokes)
+        {
+            if (stroke.Points.Count == 0)
+            {
+                continue;
+            }
+
+            var first = stroke.Points[0];
+            sb.Append(FormatNumber(first.X - minX)).Append(' ').Append(FormatNumber(first.Y - minY)).Append(" m\n");
+            foreach (var point in stroke.Points.Skip(1))
+            {
+                sb.Append(FormatNumber(point.X - minX)).Append(' ').Append(FormatNumber(point.Y - minY)).Append(" l\n");
+            }
+
+            sb.Append("S\n");
+        }
+
+        return new AnnotationAppearance(minX, minY, maxX - minX, maxY - minY, Encoding.ASCII.GetBytes(sb.ToString()), Resources: null);
+    }
+
+    private static void AppendColorOperator(StringBuilder sb, AnnotationColor color, bool stroke)
+    {
+        sb.Append(FormatNumber(color.R / 255.0)).Append(' ')
+          .Append(FormatNumber(color.G / 255.0)).Append(' ')
+          .Append(FormatNumber(color.B / 255.0)).Append(' ')
+          .Append(stroke ? "RG" : "rg").Append('\n');
+    }
+
+    private static void AppendRectOperator(StringBuilder sb, double x, double y, double width, double height, string paintOperator)
+    {
+        sb.Append(FormatNumber(x)).Append(' ')
+          .Append(FormatNumber(y)).Append(' ')
+          .Append(FormatNumber(width)).Append(' ')
+          .Append(FormatNumber(height)).Append(" re ").Append(paintOperator).Append('\n');
+    }
+
+    private static PdfArray BuildNumberArray(PdfDocument document, IEnumerable<double> values)
+    {
+        var array = new PdfArray(document);
+        foreach (var value in values)
+        {
+            array.Elements.Add(new PdfReal(value));
+        }
+
+        return array;
+    }
+
+    private static PdfArray BuildInkListArray(PdfDocument document, IReadOnlyList<InkStroke> strokes)
+    {
+        var outer = new PdfArray(document);
+        foreach (var stroke in strokes)
+        {
+            outer.Elements.Add(BuildNumberArray(document, stroke.Points.SelectMany(p => new[] { p.X, p.Y })));
+        }
+
+        return outer;
+    }
+
+    /// <summary>
+    /// Formats one content-stream number with an invariant decimal point
+    /// (content streams are not locale-aware; the current culture's decimal
+    /// separator would silently corrupt the stream on many systems).
+    /// </summary>
+    private static string FormatNumber(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+
+    /// <summary>Escapes a string for a PDF literal string operand. Non-ASCII characters are dropped rather than risk corrupting the stream, since the appearance uses an unembedded base-14 font with no custom encoding.</summary>
+    private static string EscapePdfString(string text)
+    {
+        var sb = new StringBuilder(text.Length);
+        foreach (var ch in text)
+        {
+            switch (ch)
+            {
+                case '(':
+                    sb.Append("\\(");
+                    break;
+                case ')':
+                    sb.Append("\\)");
+                    break;
+                case '\\':
+                    sb.Append("\\\\");
+                    break;
+                case '\r':
+                    break;
+                case '\n':
+                    sb.Append("\\n");
+                    break;
+                default:
+                    sb.Append(ch is >= (char)0x20 and <= (char)0x7E ? ch : '?');
+                    break;
+            }
+        }
+
+        return sb.ToString();
     }
 
     // ======================== helpers ========================
