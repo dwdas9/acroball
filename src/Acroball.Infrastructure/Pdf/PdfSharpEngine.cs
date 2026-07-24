@@ -109,6 +109,19 @@ public sealed class PdfSharpEngine : IPdfEngine
             cancellationToken);
 
     /// <inheritdoc />
+    public Task<IReadOnlyList<PdfOutlineNode>> GetOutlineAsync(
+        string filePath,
+        string? password = null,
+        CancellationToken cancellationToken = default)
+        => Task.Run<IReadOnlyList<PdfOutlineNode>>(
+            () =>
+            {
+                using var document = Open(filePath, password, PdfDocumentOpenMode.Import);
+                return BuildOutlineNodes(document, document.Outlines, depth: 0);
+            },
+            cancellationToken);
+
+    /// <inheritdoc />
     public Task MergeAsync(
         MergeRequest request,
         IProgress<OperationProgress>? progress = null,
@@ -661,6 +674,52 @@ public sealed class PdfSharpEngine : IPdfEngine
             // whole compress job; leave it exactly as it was.
             return false;
         }
+    }
+
+    /// <summary>
+    /// Recursively converts one level of PDFsharp's outline tree, resolving
+    /// each entry's destination page by identity against the open document's
+    /// page list (PDFsharp exposes no direct page-index lookup). Depth is
+    /// capped, mirroring the guard in <see cref="CollectImageXObjects"/>,
+    /// against malformed or cyclic outline dictionaries in hostile files.
+    /// </summary>
+    private static IReadOnlyList<PdfOutlineNode> BuildOutlineNodes(PdfDocument document, PdfOutlineCollection outlines, int depth)
+    {
+        if (depth > 64 || outlines.Count == 0)
+        {
+            return [];
+        }
+
+        var nodes = new List<PdfOutlineNode>(outlines.Count);
+        foreach (var outline in outlines)
+        {
+            nodes.Add(new PdfOutlineNode(
+                outline.Title,
+                FindPageNumber(document, outline.DestinationPage),
+                outline.Opened,
+                BuildOutlineNodes(document, outline.Outlines, depth + 1)));
+        }
+
+        return nodes;
+    }
+
+    /// <summary>Finds the 1-based page number of <paramref name="page"/> within <paramref name="document"/>, or null when it isn't a page in this document.</summary>
+    private static int? FindPageNumber(PdfDocument document, PdfPage? page)
+    {
+        if (page is null)
+        {
+            return null;
+        }
+
+        for (var i = 0; i < document.Pages.Count; i++)
+        {
+            if (ReferenceEquals(document.Pages[i], page))
+            {
+                return i + 1;
+            }
+        }
+
+        return null;
     }
 
     // ======================== helpers ========================

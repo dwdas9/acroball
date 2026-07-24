@@ -34,6 +34,7 @@ public sealed partial class ViewerViewModel : PageViewModel
         _logger = logger;
 
         Pages = [];
+        Outline = [];
     }
 
     /// <inheritdoc />
@@ -44,6 +45,12 @@ public sealed partial class ViewerViewModel : PageViewModel
 
     /// <summary>The open document's pages, in order.</summary>
     public ObservableCollection<ViewerPageViewModel> Pages { get; }
+
+    /// <summary>The open document's bookmark tree, empty until a document with bookmarks is open.</summary>
+    public ObservableCollection<OutlineNodeViewModel> Outline { get; }
+
+    /// <summary>Raised when a bookmark that resolves to a page is picked; the view is expected to scroll there.</summary>
+    public event Action<int>? ScrollToPageRequested;
 
     /// <summary>Absolute path of the currently open document, if any.</summary>
     [ObservableProperty]
@@ -83,6 +90,12 @@ public sealed partial class ViewerViewModel : PageViewModel
 
     /// <summary>Human-readable page count caption, blank until a document is open.</summary>
     public string PageCountCaption => Pages.Count == 0 ? string.Empty : $"{Pages.Count} page(s)";
+
+    /// <summary>Whether the open document has a bookmark tree to show.</summary>
+    public bool HasOutline => Outline.Count > 0;
+
+    /// <summary>Requests that the view scroll to <paramref name="pageNumber"/>, e.g. in response to a bookmark click.</summary>
+    public void RequestScrollToPage(int pageNumber) => ScrollToPageRequested?.Invoke(pageNumber);
 
     /// <summary>Lets the user pick a PDF file to open.</summary>
     public async Task PickFileAsync()
@@ -143,6 +156,7 @@ public sealed partial class ViewerViewModel : PageViewModel
         }
 
         Pages.Clear();
+        Outline.Clear();
         CurrentFile = null;
         _openPassword = null;
         OpenFileError = null;
@@ -245,6 +259,8 @@ public sealed partial class ViewerViewModel : PageViewModel
                 Pages.Add(new ViewerPageViewModel(pageInfo));
             }
 
+            await LoadOutlineAsync(path, password).ConfigureAwait(true);
+
             PendingPasswordFile = null;
             PendingPasswordInput = string.Empty;
             PendingPasswordError = null;
@@ -267,10 +283,31 @@ public sealed partial class ViewerViewModel : PageViewModel
         }
     }
 
+    private async Task LoadOutlineAsync(string path, string? password)
+    {
+        try
+        {
+            var outline = await _pdfEngine.GetOutlineAsync(path, password, CancellationToken.None).ConfigureAwait(true);
+            foreach (var node in outline)
+            {
+                Outline.Add(new OutlineNodeViewModel(node));
+            }
+
+            OnPropertyChanged(nameof(HasOutline));
+        }
+        catch (Exception ex)
+        {
+            // Bookmarks are a navigation aid, not core to viewing; a failure
+            // here must not prevent the document itself from opening.
+            _logger.LogWarning(ex, "Failed to read outline for {Path}", path);
+        }
+    }
+
     private void RefreshDocumentState()
     {
         OnPropertyChanged(nameof(HasDocument));
         OnPropertyChanged(nameof(CurrentFileName));
         OnPropertyChanged(nameof(PageCountCaption));
+        OnPropertyChanged(nameof(HasOutline));
     }
 }

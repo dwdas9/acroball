@@ -47,41 +47,65 @@
       </StackPanel>
     </Border>
 
-    <ListBox x:Name="PagesList"
-             Grid.Row="2"
-             Margin="0,0,0,32"
-             Background="Transparent"
-             ItemsSource="{Binding Pages}"
-             ContainerPrepared="OnPageContainerPrepared"
-             ContainerClearing="OnPageContainerClearing">
-      <ListBox.ItemsPanel>
-        <ItemsPanelTemplate>
-          <VirtualizingStackPanel Orientation="Vertical" />
-        </ItemsPanelTemplate>
-      </ListBox.ItemsPanel>
-      <ListBox.ItemTemplate>
-        <DataTemplate x:DataType="vm:ViewerPageViewModel">
-          <StackPanel Spacing="6" Margin="0,0,0,16" HorizontalAlignment="Center">
-            <Border Width="900" Height="{Binding PlaceholderHeightPx}"
-                    Background="{DynamicResource Q.Brush.SurfaceSidebar}"
-                    BorderBrush="{DynamicResource Q.Brush.Border}"
-                    BorderThickness="1" CornerRadius="4"
-                    ClipToBounds="True">
-              <Panel>
-                <Image Source="{Binding RenderedImage}" Stretch="Uniform" />
-                <TextBlock Text="Loading…" IsVisible="{Binding IsLoadingImage}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Classes="caption" />
-                <TextBlock Text="{Binding RenderError}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Classes="caption" Opacity="0.7" />
-              </Panel>
-            </Border>
-            <TextBlock Text="{Binding PageNumber}" HorizontalAlignment="Center" Classes="caption" />
+    <Grid Grid.Row="2" ColumnDefinitions="Auto,*">
+
+      <Border Grid.Column="0" Width="220" Margin="0,0,16,32"
+              IsVisible="{Binding HasOutline}"
+              Classes="card" Padding="12" CornerRadius="16">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="8">
+            <TextBlock Classes="label" Text="Bookmarks" />
+            <TreeView x:Name="OutlineTree"
+                      Background="Transparent"
+                      ItemsSource="{Binding Outline}"
+                      SelectionChanged="OnOutlineSelectionChanged">
+              <TreeView.ItemTemplate>
+                <TreeDataTemplate ItemsSource="{Binding Children}">
+                  <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
+                </TreeDataTemplate>
+              </TreeView.ItemTemplate>
+            </TreeView>
           </StackPanel>
-        </DataTemplate>
-      </ListBox.ItemTemplate>
-    </ListBox>
+        </ScrollViewer>
+      </Border>
+
+      <ListBox x:Name="PagesList"
+               Grid.Column="1"
+               Margin="0,0,0,32"
+               Background="Transparent"
+               ItemsSource="{Binding Pages}"
+               ContainerPrepared="OnPageContainerPrepared"
+               ContainerClearing="OnPageContainerClearing">
+        <ListBox.ItemsPanel>
+          <ItemsPanelTemplate>
+            <VirtualizingStackPanel Orientation="Vertical" />
+          </ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:ViewerPageViewModel">
+            <StackPanel Spacing="6" Margin="0,0,0,16" HorizontalAlignment="Center">
+              <Border Width="900" Height="{Binding PlaceholderHeightPx}"
+                      Background="{DynamicResource Q.Brush.SurfaceSidebar}"
+                      BorderBrush="{DynamicResource Q.Brush.Border}"
+                      BorderThickness="1" CornerRadius="4"
+                      ClipToBounds="True">
+                <Panel>
+                  <Image Source="{Binding RenderedImage}" Stretch="Uniform" />
+                  <TextBlock Text="Loading…" IsVisible="{Binding IsLoadingImage}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             Classes="caption" />
+                  <TextBlock Text="{Binding RenderError}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             Classes="caption" Opacity="0.7" />
+                </Panel>
+              </Border>
+              <TextBlock Text="{Binding PageNumber}" HorizontalAlignment="Center" Classes="caption" />
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+    </Grid>
 
   </Grid>
 </UserControl>

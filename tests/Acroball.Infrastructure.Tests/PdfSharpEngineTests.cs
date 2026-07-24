@@ -194,6 +194,59 @@ public class PdfSharpEngineTests : IDisposable
         Assert.True(pages[1].IsLandscape); // 102x200 rotated 90Â° presents landscape
     }
 
+    // ======================== outline ========================
+
+    [Fact]
+    public async Task GetOutline_on_document_with_no_bookmarks_returns_empty()
+    {
+        var path = CreateFixture("a.pdf", 2);
+
+        var outline = await _engine.GetOutlineAsync(path, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Empty(outline);
+    }
+
+    [Fact]
+    public async Task GetOutline_reads_nested_bookmarks_with_resolved_page_numbers()
+    {
+        var path = CreateFixture("a.pdf", 3, doc =>
+        {
+            var chapter1 = doc.Outlines.Add("Chapter 1", doc.Pages[0], true);
+            chapter1.Outlines.Add("Section 1.1", doc.Pages[1], false);
+            doc.Outlines.Add("Chapter 2", doc.Pages[2], false);
+        });
+
+        var outline = await _engine.GetOutlineAsync(path, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, outline.Count);
+
+        Assert.Equal("Chapter 1", outline[0].Title);
+        Assert.Equal(1, outline[0].DestinationPageNumber);
+        Assert.Single(outline[0].Children);
+        Assert.Equal("Section 1.1", outline[0].Children[0].Title);
+        Assert.Equal(2, outline[0].Children[0].DestinationPageNumber);
+        Assert.Empty(outline[0].Children[0].Children);
+
+        Assert.Equal("Chapter 2", outline[1].Title);
+        Assert.Equal(3, outline[1].DestinationPageNumber);
+        Assert.Empty(outline[1].Children);
+    }
+
+    [Fact]
+    public async Task GetOutline_opened_flag_does_not_round_trip_through_pdfsharp_save()
+    {
+        // PdfSharp.Pdf.PdfOutline.Opened is set to true for chapter1 below, but
+        // does not survive a save/reopen round trip in PDFsharp 6.2.4 (it reads
+        // back false regardless of what was written) — an upstream limitation,
+        // not a mapping bug here. IsExpanded is documented in ADR-0012 as
+        // best-effort for exactly this reason.
+        var path = CreateFixture("a.pdf", 1, doc => doc.Outlines.Add("Chapter 1", doc.Pages[0], opened: true));
+
+        var outline = await _engine.GetOutlineAsync(path, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(outline[0].IsExpanded);
+    }
+
     // ======================== merge ========================
 
     [Fact]

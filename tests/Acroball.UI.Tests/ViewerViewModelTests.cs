@@ -232,6 +232,67 @@ public sealed class ViewerViewModelTests
         Assert.False(page.IsLoadingImage);
     }
 
+    [Fact]
+    public async Task OpenFileAsync_populates_outline_from_engine()
+    {
+        using var fixture = new PdfFixture();
+        var alpha = fixture.CreateFile("Alpha.pdf");
+
+        var pdfEngine = new Mock<IPdfEngine>();
+        pdfEngine.Setup(x => x.GetPagesAsync(alpha, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PdfPageInfo> { new(1, 300, 400, Rotation.None), new(2, 300, 400, Rotation.None) });
+        pdfEngine.Setup(x => x.GetOutlineAsync(alpha, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PdfOutlineNode>
+            {
+                new("Chapter 1", 1, true, [new PdfOutlineNode("Section 1.1", 2, false, [])]),
+            });
+
+        var viewModel = CreateViewModel(pdfEngine: pdfEngine.Object);
+
+        await viewModel.OpenFileAsync(alpha);
+
+        Assert.True(viewModel.HasOutline);
+        Assert.Single(viewModel.Outline);
+        Assert.Equal("Chapter 1", viewModel.Outline[0].Title);
+        Assert.Equal(1, viewModel.Outline[0].DestinationPageNumber);
+        Assert.Single(viewModel.Outline[0].Children);
+        Assert.Equal("Section 1.1", viewModel.Outline[0].Children[0].Title);
+    }
+
+    [Fact]
+    public async Task OpenFileAsync_when_outline_read_fails_still_opens_document()
+    {
+        using var fixture = new PdfFixture();
+        var alpha = fixture.CreateFile("Alpha.pdf");
+
+        var pdfEngine = new Mock<IPdfEngine>();
+        pdfEngine.Setup(x => x.GetPagesAsync(alpha, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PdfPageInfo> { new(1, 300, 400, Rotation.None) });
+        pdfEngine.Setup(x => x.GetOutlineAsync(alpha, null, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new PdfOperationException("Outline read failed."));
+
+        var viewModel = CreateViewModel(pdfEngine: pdfEngine.Object);
+
+        await viewModel.OpenFileAsync(alpha);
+
+        Assert.True(viewModel.HasDocument);
+        Assert.Single(viewModel.Pages);
+        Assert.False(viewModel.HasOutline);
+        Assert.Empty(viewModel.Outline);
+    }
+
+    [Fact]
+    public void RequestScrollToPage_raises_scroll_to_page_requested()
+    {
+        var viewModel = CreateViewModel();
+        var raised = new List<int>();
+        viewModel.ScrollToPageRequested += raised.Add;
+
+        viewModel.RequestScrollToPage(3);
+
+        Assert.Equal([3], raised);
+    }
+
     private static ViewerViewModel CreateViewModel(IPdfEngine? pdfEngine = null, IPdfRenderService? pdfRenderService = null)
     {
         pdfEngine ??= new Mock<IPdfEngine>().Object;

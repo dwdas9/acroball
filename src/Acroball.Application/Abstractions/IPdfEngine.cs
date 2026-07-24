@@ -30,6 +30,12 @@ public interface IPdfEngine
         string? password = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Reads a PDF's outline (bookmark) tree, for navigation only.</summary>
+    Task<IReadOnlyList<PdfOutlineNode>> GetOutlineAsync(
+        string filePath,
+        string? password = null,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Merges several documents into one. See <see cref="MergeRequest"/>.</summary>
     Task MergeAsync(
         MergeRequest request,
