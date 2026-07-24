@@ -33,6 +33,7 @@ public static class ToolCatalog
         new("compress", "Compress", "Shrink file size with control over quality.", "Compress", "M4"),
         new("protect", "Protect", "Add or remove passwords and set permissions.", "Lock", "M4"),
         new("metadata", "Metadata", "View and edit title, author and document info.", "Tag", "M4"),
+        new("fill-form", "Fill Form", "Fill in AcroForm fields and save a completed copy.", "Form", "M7"),
     ];
 
     /// <summary>Returns the tool with the given id.</summary>

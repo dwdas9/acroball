@@ -1,0 +1,98 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Acroball.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="980" d:DesignHeight="820"
+             x:Class="Acroball.UI.Views.FormView"
+             x:DataType="vm:FormViewModel">
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="32" Spacing="20" MaxWidth="900" HorizontalAlignment="Left">
+      <StackPanel Spacing="6">
+        <TextBlock Classes="h1" Text="Fill Form" />
+        <TextBlock Classes="caption" Text="Fill in AcroForm fields and save a completed copy." />
+      </StackPanel>
+
+      <Border Classes="card" Padding="20" CornerRadius="16">
+        <StackPanel Spacing="12">
+          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+            <StackPanel Grid.Column="0" Spacing="4">
+              <TextBlock Classes="label" Text="{Binding CurrentFileName}" IsVisible="{Binding HasDocument}" />
+              <TextBlock Classes="label" Text="No document open" IsVisible="{Binding !HasDocument}" />
+              <TextBlock Classes="caption" Text="{Binding Fields.Count, StringFormat={}{0} field(s)}" IsVisible="{Binding HasDocument}" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="Open File" Command="{Binding PickFileCommand}" />
+            <Button Grid.Column="2" Content="Close" Command="{Binding CloseDocumentCommand}" IsVisible="{Binding HasDocument}" />
+          </Grid>
+
+          <TextBlock Text="{Binding OpenFileError}"
+                     Foreground="{DynamicResource Q.Brush.Danger}"
+                     TextWrapping="Wrap" />
+
+          <Border Padding="16" CornerRadius="12"
+                  Background="{DynamicResource Q.Brush.SurfaceElevated}"
+                  IsVisible="{Binding HasPendingPassword}">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="label" Text="{Binding PendingPasswordFileName, StringFormat=Password needed for {0}}" />
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <TextBox Grid.Column="0" Text="{Binding PendingPasswordInput}" PasswordChar="•" PlaceholderText="Password" />
+                <Button Grid.Column="1" Content="Unlock" Command="{Binding SubmitPendingPasswordCommand}" />
+                <Button Grid.Column="2" Content="Cancel" Command="{Binding CancelPendingPasswordCommand}" />
+              </Grid>
+              <TextBlock Text="{Binding PendingPasswordError}"
+                         Foreground="{DynamicResource Q.Brush.Danger}" />
+            </StackPanel>
+          </Border>
+
+          <TextBlock Classes="caption" Text="This document has no fillable form fields." IsVisible="{Binding HasNoFields}" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16" IsVisible="{Binding HasFields}">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="label" Text="Fields" />
+
+          <ItemsControl ItemsSource="{Binding Fields}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:FormFieldViewModel">
+                <Grid ColumnDefinitions="220,*" Margin="0,0,0,12" ColumnSpacing="12">
+                  <TextBlock Grid.Column="0" Text="{Binding FullyQualifiedName}"
+                             VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                             ToolTip.Tip="{Binding FullyQualifiedName}" />
+
+                  <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsText}" IsEnabled="{Binding !IsReadOnly}" />
+
+                  <CheckBox Grid.Column="1" IsChecked="{Binding IsChecked}" IsVisible="{Binding IsCheckBox}" IsEnabled="{Binding !IsReadOnly}" Content="Checked" />
+
+                  <ComboBox Grid.Column="1" ItemsSource="{Binding Options}" SelectedItem="{Binding Value}" IsVisible="{Binding IsChoice}" IsEnabled="{Binding !IsReadOnly}" HorizontalAlignment="Stretch" />
+
+                  <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsRadioButton}" IsEnabled="{Binding !IsReadOnly}"
+                           PlaceholderText="Option index (0-based)" />
+
+                  <TextBlock Grid.Column="1" Text="(not fillable)" IsVisible="{Binding !IsFillable}"
+                             VerticalAlignment="Center" Classes="caption" Opacity="0.7" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="20" CornerRadius="16" IsVisible="{Binding HasFields}">
+        <StackPanel Spacing="12">
+          <CheckBox Content="Flatten fields after filling (make them read-only in the output)" IsChecked="{Binding FlattenAfterFill}" />
+
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Save Filled Form" Command="{Binding SaveCommand}" IsEnabled="{Binding !IsSaving}" />
+          </StackPanel>
+
+          <TextBlock Text="{Binding ResultMessage}" TextWrapping="Wrap" IsVisible="{Binding HasSuccessResult}" />
+          <TextBlock Text="{Binding ResultMessage}" TextWrapping="Wrap" IsVisible="{Binding HasFailureResult}"
+                     Foreground="{DynamicResource Q.Brush.Danger}" />
+        </StackPanel>
+      </Border>
+
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

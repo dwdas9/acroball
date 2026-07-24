@@ -1,7 +1,10 @@
 ﻿using System.Runtime.Versioning;
+using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using PdfSharp.Drawing;
+using PdfSharp.Fonts;
 using PdfSharp.Pdf;
+using PdfSharp.Pdf.AcroForms;
 using PdfSharp.Pdf.Advanced;
 using PdfSharp.Pdf.IO;
 using SkiaSharp;
@@ -9,6 +12,7 @@ using Acroball.Application.Operations;
 using Acroball.Domain;
 using Acroball.Domain.Annotations;
 using Acroball.Domain.Exceptions;
+using Acroball.Domain.Forms;
 using Acroball.Infrastructure.Pdf;
 using Xunit;
 
@@ -35,6 +39,11 @@ public class PdfSharpEngineTests : IDisposable
 
     public PdfSharpEngineTests()
     {
+        // Production DI composition assigns this once (ADR-0014); this test
+        // process never runs that composition, so the equivalent one-time
+        // assignment is done here instead.
+        GlobalFontSettings.FontResolver ??= new SkiaSystemFontResolver();
+
         _dir = Path.Combine(Path.GetTempPath(), "Acroball-engine-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_dir);
     }
@@ -928,6 +937,204 @@ public class PdfSharpEngineTests : IDisposable
         using var reopened = PdfReader.Open(output, PdfDocumentOpenMode.Import);
         Assert.Equal(1, reopened.Pages[0].Annotations.Count);
         Assert.Equal(1, reopened.Pages[1].Annotations.Count);
+    }
+
+    // ======================== forms ========================
+
+    /// <summary>
+    /// Hand-authors a minimal AcroForm (text + checkbox + combo box), the
+    /// same low-level dictionary technique as the annotations fixtures
+    /// (ADR-0013) — PDFsharp's typed field classes (<see cref="PdfTextField"/>
+    /// etc.) have only non-public constructors, so they can be read and
+    /// filled but not authored (ADR-0014). The checkbox needs a real
+    /// <c>/AP /N</c> dictionary with named on/off states: without one,
+    /// PdfSharp can still report <c>CheckedName</c>/<c>UncheckedName</c>
+    /// (falling back to <c>/Yes</c>/<c>/Off</c>) but throws
+    /// <see cref="ArgumentNullException"/> from inside its own
+    /// <c>PdfCheckBoxField.Checked</c> setter — verified directly, not assumed.
+    /// </summary>
+    private string CreateFormFixture(string name)
+    {
+        var path = P(name);
+        using var document = new PdfDocument();
+        var page = document.AddPage();
+        page.Width = XUnit.FromPoint(300);
+        page.Height = XUnit.FromPoint(300);
+
+        var textField = new PdfDictionary(document);
+        textField.Elements.SetName("/Type", "/Annot");
+        textField.Elements.SetName("/Subtype", "/Widget");
+        textField.Elements.SetName("/FT", "/Tx");
+        textField.Elements.SetString("/T", "Name");
+        textField.Elements.SetValue("/Rect", new PdfRectangle(new XRect(50, 250, 150, 20)));
+        textField.Elements.SetString("/DA", "/Helv 12 Tf 0 g");
+        document.Internals.AddObject(textField);
+        page.Annotations.Elements.Add(textField);
+
+        var onForm = new PdfDictionary(document);
+        onForm.Elements.SetName("/Type", "/XObject");
+        onForm.Elements.SetName("/Subtype", "/Form");
+        onForm.Elements.SetValue("/BBox", new PdfRectangle(new XRect(0, 0, 20, 20)));
+        onForm.CreateStream(Encoding.ASCII.GetBytes("0 0 20 20 re f\n"));
+        document.Internals.AddObject(onForm);
+
+        var offForm = new PdfDictionary(document);
+        offForm.Elements.SetName("/Type", "/XObject");
+        offForm.Elements.SetName("/Subtype", "/Form");
+        offForm.Elements.SetValue("/BBox", new PdfRectangle(new XRect(0, 0, 20, 20)));
+        offForm.CreateStream([]);
+        document.Internals.AddObject(offForm);
+
+        var checkBoxAppearance = new PdfDictionary(document);
+        checkBoxAppearance.Elements["/Yes"] = onForm.Reference;
+        checkBoxAppearance.Elements["/Off"] = offForm.Reference;
+        var checkBoxAp = new PdfDictionary(document);
+        checkBoxAp.Elements["/N"] = checkBoxAppearance;
+
+        var checkBox = new PdfDictionary(document);
+        checkBox.Elements.SetName("/Type", "/Annot");
+        checkBox.Elements.SetName("/Subtype", "/Widget");
+        checkBox.Elements.SetName("/FT", "/Btn");
+        checkBox.Elements.SetString("/T", "Agree");
+        checkBox.Elements.SetValue("/Rect", new PdfRectangle(new XRect(50, 220, 20, 20)));
+        checkBox.Elements.SetName("/AS", "/Off");
+        checkBox.Elements.SetName("/V", "/Off");
+        checkBox.Elements["/AP"] = checkBoxAp;
+        document.Internals.AddObject(checkBox);
+        page.Annotations.Elements.Add(checkBox);
+
+        var combo = new PdfDictionary(document);
+        combo.Elements.SetName("/Type", "/Annot");
+        combo.Elements.SetName("/Subtype", "/Widget");
+        combo.Elements.SetName("/FT", "/Ch");
+        combo.Elements.SetInteger("/Ff", 1 << 17); // Combo flag (bit 18 of the field-flags integer).
+        combo.Elements.SetString("/T", "Color");
+        combo.Elements.SetValue("/Rect", new PdfRectangle(new XRect(50, 190, 100, 20)));
+        combo.Elements.SetString("/DA", "/Helv 12 Tf 0 g");
+        var options = new PdfArray(document);
+        options.Elements.Add(new PdfString("Red"));
+        options.Elements.Add(new PdfString("Green"));
+        options.Elements.Add(new PdfString("Blue"));
+        combo.Elements["/Opt"] = options;
+        document.Internals.AddObject(combo);
+        page.Annotations.Elements.Add(combo);
+
+        var acroForm = new PdfDictionary(document);
+        var fieldsArray = new PdfArray(document);
+        fieldsArray.Elements.Add(textField.Reference!);
+        fieldsArray.Elements.Add(checkBox.Reference!);
+        fieldsArray.Elements.Add(combo.Reference!);
+        acroForm.Elements["/Fields"] = fieldsArray;
+        document.Internals.AddObject(acroForm);
+        document.Internals.Catalog.Elements["/AcroForm"] = acroForm.Reference;
+
+        document.Save(path);
+        return path;
+    }
+
+    [Fact]
+    public async Task GetFormFields_on_document_with_no_form_returns_empty()
+    {
+        var path = CreateFixture("a.pdf", 1);
+
+        var fields = await _engine.GetFormFieldsAsync(path, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Empty(fields);
+    }
+
+    [Fact]
+    public async Task GetFormFields_reads_text_checkbox_and_combo_fields()
+    {
+        var path = CreateFormFixture("form.pdf");
+
+        var fields = await _engine.GetFormFieldsAsync(path, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, fields.Count);
+
+        var text = Assert.Single(fields, f => f.FullyQualifiedName == "Name");
+        Assert.Equal(FormFieldKind.Text, text.Kind);
+        Assert.False(text.IsReadOnly);
+
+        var checkBox = Assert.Single(fields, f => f.FullyQualifiedName == "Agree");
+        Assert.Equal(FormFieldKind.CheckBox, checkBox.Kind);
+        Assert.Equal("/Off", checkBox.CurrentValue);
+        Assert.Equal(["/Yes", "/Off"], checkBox.Options);
+
+        var combo = Assert.Single(fields, f => f.FullyQualifiedName == "Color");
+        Assert.Equal(FormFieldKind.ComboBox, combo.Kind);
+        Assert.Equal(["Red", "Green", "Blue"], combo.Options);
+    }
+
+    [Fact]
+    public async Task FillForm_round_trips_text_checkbox_and_combo_values()
+    {
+        var path = CreateFormFixture("form.pdf");
+        var output = P("filled.pdf");
+
+        await _engine.FillFormAsync(
+            new FillFormRequest(path, output,
+            [
+                new FormFieldValue("Name", "Ada Lovelace"),
+                new FormFieldValue("Agree", "/Yes"),
+                new FormFieldValue("Color", "Green"),
+            ]),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var fields = await _engine.GetFormFieldsAsync(output, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("Ada Lovelace", Assert.Single(fields, f => f.FullyQualifiedName == "Name").CurrentValue);
+        Assert.Equal("/Yes", Assert.Single(fields, f => f.FullyQualifiedName == "Agree").CurrentValue);
+        Assert.Equal("Green", Assert.Single(fields, f => f.FullyQualifiedName == "Color").CurrentValue);
+
+        using var reopened = PdfReader.Open(output, PdfDocumentOpenMode.Import);
+        Assert.True(reopened.AcroForm!.Elements.GetBoolean("/NeedAppearances"));
+    }
+
+    [Fact]
+    public async Task FillForm_missing_field_name_throws()
+    {
+        var path = CreateFormFixture("form.pdf");
+
+        await Assert.ThrowsAsync<PdfOperationException>(
+            () => _engine.FillFormAsync(
+                new FillFormRequest(path, P("out.pdf"), [new FormFieldValue("DoesNotExist", "x")]),
+                cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task FillForm_invalid_combo_option_throws()
+    {
+        var path = CreateFormFixture("form.pdf");
+
+        await Assert.ThrowsAsync<PdfOperationException>(
+            () => _engine.FillFormAsync(
+                new FillFormRequest(path, P("out.pdf"), [new FormFieldValue("Color", "Purple")]),
+                cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task FillForm_on_document_with_no_form_throws()
+    {
+        var path = CreateFixture("a.pdf", 1);
+
+        await Assert.ThrowsAsync<PdfOperationException>(
+            () => _engine.FillFormAsync(
+                new FillFormRequest(path, P("out.pdf"), [new FormFieldValue("Name", "x")]),
+                cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task FillForm_with_flatten_marks_fields_read_only()
+    {
+        var path = CreateFormFixture("form.pdf");
+        var output = P("filled.pdf");
+
+        await _engine.FillFormAsync(
+            new FillFormRequest(path, output, [new FormFieldValue("Name", "Ada")], FlattenAfterFill: true),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var fields = await _engine.GetFormFieldsAsync(output, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.All(fields, f => Assert.True(f.IsReadOnly));
     }
 }
 

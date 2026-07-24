@@ -43,6 +43,7 @@ public sealed class PageFactory
         "compress" => _services.GetRequiredService<CompressViewModel>(),
         "metadata" => _services.GetRequiredService<MetadataViewModel>(),
         "protect" => _services.GetRequiredService<ProtectViewModel>(),
+        "fill-form" => _services.GetRequiredService<FormViewModel>(),
         _ => new ToolPlaceholderViewModel(ToolCatalog.GetById(pageId)),
     };
 }

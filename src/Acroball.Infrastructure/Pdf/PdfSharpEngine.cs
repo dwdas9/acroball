@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
+using PdfSharp.Pdf.AcroForms;
 using PdfSharp.Pdf.IO;
 using SkiaSharp;
 using Acroball.Application.Abstractions;
@@ -10,6 +11,7 @@ using Acroball.Application.Operations;
 using Acroball.Domain;
 using Acroball.Domain.Annotations;
 using Acroball.Domain.Exceptions;
+using Acroball.Domain.Forms;
 
 namespace Acroball.Infrastructure.Pdf;
 
@@ -543,6 +545,90 @@ public sealed class PdfSharpEngine : IPdfEngine
             },
             cancellationToken);
 
+    /// <inheritdoc />
+    public Task<IReadOnlyList<PdfFormFieldInfo>> GetFormFieldsAsync(
+        string filePath,
+        string? password = null,
+        CancellationToken cancellationToken = default)
+        => Task.Run<IReadOnlyList<PdfFormFieldInfo>>(
+            () =>
+            {
+                using var document = Open(filePath, password, PdfDocumentOpenMode.Import);
+                if (!HasAcroForm(document))
+                {
+                    return [];
+                }
+
+                var form = document.AcroForm;
+                var fields = new List<PdfFormFieldInfo>(form.Fields.Count);
+                for (var i = 0; i < form.Fields.Count; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    fields.Add(ToFieldInfo(form.Fields[i]));
+                }
+
+                return fields;
+            },
+            cancellationToken);
+
+    /// <inheritdoc />
+    public Task FillFormAsync(
+        FillFormRequest request,
+        IProgress<OperationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+        => Task.Run(
+            () =>
+            {
+                if (request.Values.Count == 0)
+                {
+                    throw new PdfOperationException("No field values were specified.");
+                }
+
+                using var document = Open(request.InputFile, request.Password, PdfDocumentOpenMode.Modify);
+                if (!HasAcroForm(document))
+                {
+                    throw new PdfOperationException($"\"{Path.GetFileName(request.InputFile)}\" has no fillable form fields.");
+                }
+
+                var form = document.AcroForm;
+
+                var valuesDone = 0;
+                foreach (var value in request.Values)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var field = FindField(form, value.FullyQualifiedName)
+                        ?? throw new PdfOperationException($"Field \"{value.FullyQualifiedName}\" was not found.");
+
+                    SetFieldValue(field, value.Value);
+
+                    valuesDone++;
+                    progress?.Report(new OperationProgress(
+                        (double)valuesDone / request.Values.Count,
+                        $"Filling field {valuesDone}/{request.Values.Count}"));
+                }
+
+                if (request.FlattenAfterFill)
+                {
+                    for (var i = 0; i < form.Fields.Count; i++)
+                    {
+                        form.Fields[i].ReadOnly = true;
+                    }
+                }
+
+                // Mitigates blank rendering in viewers (e.g. SumatraPDF, Apple
+                // Preview) that don't regenerate appearance streams themselves
+                // on open — see ADR-0014.
+                form.Elements.SetBoolean("/NeedAppearances", true);
+
+                SaveAtomic(document, request.OutputFile, cancellationToken);
+                progress?.Report(new OperationProgress(1.0, "Done"));
+                _logger.LogInformation(
+                    "Filled {Count} field(s) of {Input} into {Output}",
+                    request.Values.Count, request.InputFile, request.OutputFile);
+            },
+            cancellationToken);
+
     /// <summary>
     /// Recompresses qualifying images across every page (and one level of
     /// nested Form XObjects) of <paramref name="document"/> in place. See
@@ -1047,6 +1133,143 @@ public sealed class PdfSharpEngine : IPdfEngine
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Whether <paramref name="document"/> has an AcroForm at all.
+    /// <see cref="PdfDocument.AcroForm"/> throws <see cref="InvalidOperationException"/>
+    /// rather than returning null when the catalog has no <c>/AcroForm</c>
+    /// entry — verified directly, not assumed — so this checks the catalog
+    /// first instead of null-checking the property.
+    /// </summary>
+    private static bool HasAcroForm(PdfDocument document)
+        => document.Internals.Catalog.Elements.ContainsKey("/AcroForm");
+
+    /// <summary>
+    /// Maps one PDFsharp typed field to its Domain shape. Radio groups and
+    /// list boxes are supported structurally through the same typed API path
+    /// as CheckBox/ComboBox but were not exercised against a dedicated
+    /// hand-built fixture (radio groups need kid widgets, which is a step
+    /// beyond what this milestone's tests build) — see ADR-0014.
+    /// </summary>
+    private static PdfFormFieldInfo ToFieldInfo(PdfAcroField field)
+    {
+        return field switch
+        {
+            PdfTextField text => new PdfFormFieldInfo(text.Name, FormFieldKind.Text, text.ReadOnly, text.Text, null),
+            PdfCheckBoxField checkBox => new PdfFormFieldInfo(
+                checkBox.Name,
+                FormFieldKind.CheckBox,
+                checkBox.ReadOnly,
+                checkBox.Checked ? checkBox.CheckedName : checkBox.UncheckedName,
+                [checkBox.CheckedName, checkBox.UncheckedName]),
+            PdfComboBoxField combo => BuildChoiceFieldInfo(combo, FormFieldKind.ComboBox),
+            PdfListBoxField listBox => BuildChoiceFieldInfo(listBox, FormFieldKind.ListBox),
+            PdfRadioButtonField radio => new PdfFormFieldInfo(
+                radio.Name, FormFieldKind.RadioButton, radio.ReadOnly, radio.SelectedIndex.ToString(CultureInfo.InvariantCulture), null),
+            PdfSignatureField signature => new PdfFormFieldInfo(signature.Name, FormFieldKind.Signature, IsReadOnly: true, null, null),
+            PdfPushButtonField pushButton => new PdfFormFieldInfo(pushButton.Name, FormFieldKind.PushButton, IsReadOnly: true, null, null),
+            _ => new PdfFormFieldInfo(field.Name, FormFieldKind.Unsupported, field.ReadOnly, null, null),
+        };
+    }
+
+    private static PdfFormFieldInfo BuildChoiceFieldInfo(PdfAcroField field, FormFieldKind kind)
+    {
+        var options = ReadChoiceOptions(field);
+        var selectedIndex = field switch
+        {
+            PdfComboBoxField combo => combo.SelectedIndex,
+            PdfListBoxField listBox => listBox.SelectedIndex,
+            _ => -1,
+        };
+        var currentValue = options is not null && selectedIndex >= 0 && selectedIndex < options.Count
+            ? options[selectedIndex]
+            : null;
+
+        return new PdfFormFieldInfo(field.Name, kind, field.ReadOnly, currentValue, options);
+    }
+
+    /// <summary>
+    /// Reads a choice field's <c>/Opt</c> array. PDFsharp's typed choice field
+    /// classes expose <c>SelectedIndex</c> but no public list of the options
+    /// themselves, so this reads the raw array the same way
+    /// <see cref="TryRecompressImage"/> reads other low-level dictionary data.
+    /// </summary>
+    private static IReadOnlyList<string>? ReadChoiceOptions(PdfAcroField field)
+    {
+        if (field.Elements["/Opt"] is not PdfArray options)
+        {
+            return null;
+        }
+
+        var result = new List<string>(options.Elements.Count);
+        for (var i = 0; i < options.Elements.Count; i++)
+        {
+            result.Add(options.Elements[i] switch
+            {
+                PdfString exportValue => exportValue.Value,
+                PdfArray { Elements.Count: > 1 } pair when pair.Elements[1] is PdfString display => display.Value,
+                var other => other?.ToString() ?? string.Empty,
+            });
+        }
+
+        return result;
+    }
+
+    /// <summary>Finds one field by its fully qualified name. PDFsharp exposes no by-name lookup on the public collection type, so this scans.</summary>
+    private static PdfAcroField? FindField(PdfAcroForm form, string fullyQualifiedName)
+    {
+        for (var i = 0; i < form.Fields.Count; i++)
+        {
+            var field = form.Fields[i];
+            if (field.Name == fullyQualifiedName)
+            {
+                return field;
+            }
+        }
+
+        return null;
+    }
+
+    private static void SetFieldValue(PdfAcroField field, string value)
+    {
+        switch (field)
+        {
+            case PdfTextField text:
+                text.Text = value;
+                break;
+            case PdfCheckBoxField checkBox:
+                checkBox.Checked = string.Equals(value, checkBox.CheckedName, StringComparison.Ordinal);
+                break;
+            case PdfComboBoxField combo:
+                combo.SelectedIndex = ResolveChoiceIndex(combo, value);
+                break;
+            case PdfListBoxField listBox:
+                listBox.SelectedIndex = ResolveChoiceIndex(listBox, value);
+                break;
+            case PdfRadioButtonField radio:
+                if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var radioIndex))
+                {
+                    throw new PdfOperationException($"Radio field \"{field.Name}\" needs a numeric option index, got \"{value}\".");
+                }
+
+                radio.SelectedIndex = radioIndex;
+                break;
+            default:
+                throw new PdfOperationException($"Field \"{field.Name}\" is not fillable ({field.GetType().Name}).");
+        }
+    }
+
+    private static int ResolveChoiceIndex(PdfAcroField field, string value)
+    {
+        var options = ReadChoiceOptions(field);
+        var index = options?.ToList().IndexOf(value) ?? -1;
+        if (index < 0)
+        {
+            throw new PdfOperationException($"\"{value}\" is not a valid option for field \"{field.Name}\".");
+        }
+
+        return index;
     }
 
     // ======================== helpers ========================

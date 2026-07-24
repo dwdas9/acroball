@@ -51,6 +51,11 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IRecentFilesService, RecentFilesService>();
         services.AddSingleton<IUpdateService, NullUpdateService>();
 
+        // PDFsharp eagerly constructs a font just to read an AcroForm text
+        // field, and ships no default resolver (ADR-0014). Assigned once,
+        // globally, here — GlobalFontSettings itself is a PdfSharp-owned static.
+        PdfSharp.Fonts.GlobalFontSettings.FontResolver ??= new SkiaSystemFontResolver();
+
         // Stateless, thread-safe; PDFsharp behind the abstraction (ADR-0002).
         services.AddSingleton<IPdfEngine, PdfSharpEngine>();
         services.AddSingleton<IJobExecutor, JobRunner>();

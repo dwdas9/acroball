@@ -1,5 +1,6 @@
 ﻿using Acroball.Application.Operations;
 using Acroball.Domain;
+using Acroball.Domain.Forms;
 
 namespace Acroball.Application.Abstractions;
 
@@ -93,6 +94,18 @@ public interface IPdfEngine
     /// <summary>Adds annotations to a document. See <see cref="SaveAnnotationsRequest"/>.</summary>
     Task SaveAnnotationsAsync(
         SaveAnnotationsRequest request,
+        IProgress<OperationProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Reads a PDF's AcroForm fields.</summary>
+    Task<IReadOnlyList<PdfFormFieldInfo>> GetFormFieldsAsync(
+        string filePath,
+        string? password = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Fills AcroForm fields. See <see cref="FillFormRequest"/>.</summary>
+    Task FillFormAsync(
+        FillFormRequest request,
         IProgress<OperationProgress>? progress = null,
         CancellationToken cancellationToken = default);
 }

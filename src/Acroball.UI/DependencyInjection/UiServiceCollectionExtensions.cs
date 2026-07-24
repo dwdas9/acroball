@@ -28,6 +28,7 @@ public static class UiServiceCollectionExtensions
         services.AddTransient<CompressViewModel>();
         services.AddTransient<MetadataViewModel>();
         services.AddTransient<ProtectViewModel>();
+        services.AddTransient<FormViewModel>();
 
         return services;
     }
