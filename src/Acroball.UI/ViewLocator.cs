@@ -16,6 +16,7 @@ public sealed class ViewLocator : IDataTemplate
     {
         [typeof(HomeViewModel)] = () => new HomeView(),
         [typeof(SettingsViewModel)] = () => new SettingsView(),
+        [typeof(ViewerViewModel)] = () => new ViewerView(),
         [typeof(MergeViewModel)] = () => new MergeView(),
         [typeof(SplitViewModel)] = () => new Views.SplitView(),
         [typeof(ExtractViewModel)] = () => new ExtractView(),

@@ -34,6 +34,7 @@ public sealed class PageFactory
     {
         PageIds.Home => _services.GetRequiredService<HomeViewModel>(),
         PageIds.Settings => _services.GetRequiredService<SettingsViewModel>(),
+        "viewer" => _services.GetRequiredService<ViewerViewModel>(),
         "merge" => _services.GetRequiredService<MergeViewModel>(),
         "split" => _services.GetRequiredService<SplitViewModel>(),
         "extract" => _services.GetRequiredService<ExtractViewModel>(),

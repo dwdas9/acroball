@@ -24,6 +24,7 @@ public static class ToolCatalog
     /// <summary>All built-in tools, in home-screen order.</summary>
     public static IReadOnlyList<ToolDefinition> All { get; } =
     [
+        new("viewer", "Viewer", "Browse a PDF's pages in a continuous scroll.", "Viewer", "M6"),
         new("merge", "Merge", "Combine several PDFs into one, in the order you choose.", "Merge", "M3"),
         new("split", "Split", "Break a PDF apart by page ranges into separate files.", "Split", "M2"),
         new("organize", "Organize", "Reorder, rotate, delete and move pages visually.", "Organize", "M3"),

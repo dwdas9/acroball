@@ -19,6 +19,7 @@ public static class UiServiceCollectionExtensions
         // Pages are transient: navigating away discards state by design in M1.
         services.AddTransient<HomeViewModel>();
         services.AddTransient<SettingsViewModel>();
+        services.AddTransient<ViewerViewModel>();
         services.AddTransient<MergeViewModel>();
         services.AddTransient<SplitViewModel>();
         services.AddTransient<ExtractViewModel>();
