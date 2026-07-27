@@ -24,27 +24,24 @@ being a nullable `Points?` defaulting to `null` for every non-Ink shape, while
 null-safety gap, though it was not conclusively reproduced as the exact cause
 of that one crash (a subsequent relaunch of the pre-fix build ran clean for
 the rest of the session). Fixed by defaulting `Points` to `[]` instead of
-`null`. Full solution build and the full test suite (204 tests:
-`Acroball.Domain.Tests` 33, `Acroball.Application.Tests` 4,
+`null`, committed in `39f790f` along with the checkpoint update that
+introduced this file's prior revision. Full solution build and the full test
+suite (204 tests: `Acroball.Domain.Tests` 33, `Acroball.Application.Tests` 4,
 `Acroball.UI.Tests` 99, `Acroball.Infrastructure.Tests` 68) are green with
-the fix in place. **This fix is not yet committed.**
+the fix in place.
 
 ## Current Blockers
-1. The `AnnotationPreviewShape.Points` fix above is uncommitted
-   (`src/Acroball.UI/ViewModels/AnnotationPreviewShape.cs`, one line).
-2. Branch `feature/pdf-viewer-editing` is not merged into `main`; whether to
-   merge (and in what shape — as-is, or squashed) has not been decided with
-   the user.
-3. Pre-existing, unrelated to this feature work: the M5 task (push the
+1. Branch `feature/pdf-viewer-editing` is not yet merged into `main`; the
+   user has decided to merge as-is (merge commit, preserving branch
+   history) now that all four M6/M7 features are manually confirmed working.
+2. Pre-existing, unrelated to this feature work: the M5 task (push the
    already-committed `.github/workflows/app-release.yml` and verify a real
    `app-v0.1.0` release on GitHub) is still outstanding underneath
    everything above.
 
 ## Next Immediate Task
-Commit the `AnnotationPreviewShape.Points` null-safety fix, then decide with
-the user whether (and how) to merge `feature/pdf-viewer-editing` into `main`
-now that all four M6/M7 features are manually confirmed working — after
-that, resume the outstanding M5 task (push `app-release.yml`, verify the
+Merge `feature/pdf-viewer-editing` into `main` (merge commit, not squash),
+then resume the outstanding M5 task (push `app-release.yml`, verify the
 `app-v0.1.0` GitHub release).
 
 ## Context Dependency Index
