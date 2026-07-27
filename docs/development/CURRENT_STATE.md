@@ -1,50 +1,37 @@
 # Current State
 
-Last updated: 2026-07-27
+Last updated: 2026-07-28
 
 ## Current Milestone
-M6/M7 — Acrobat-style viewing and editing (Viewer, Bookmarks, Annotations,
-Fill Form), on branch `feature/pdf-viewer-editing` (up to date with
-`origin/feature/pdf-viewer-editing`, not yet merged into `main`).
+M5/M6/M7 — Acrobat-style viewing and editing (Viewer, Bookmarks, Annotations,
+Fill Form) plus the release pipeline — all closed out. `main` now contains
+everything from `feature/pdf-viewer-editing` (merged via PR #1 plus one
+follow-up merge commit for a null-safety fix that landed after the PR).
+No milestone is currently active; the next one has not yet been chosen.
 
 ## Last Completed Action
-Manually, interactively verified all four M6/M7 features in the real running
-desktop app (the blocker recorded at the end of the last session): Viewer's
-continuous-scroll rendering and bookmark navigation, drawing and saving all
-four annotation kinds (Highlight/FreeText/Ink/Square) with a confirmed
-round-trip on reopen, and Fill Form's field rendering/editing/save round-trip
-— the user ran this pass themselves and confirmed all of it works end-to-end.
-
-During this pass, one launch of the app crashed on startup with
-`System.ArgumentNullException: Value cannot be null. (Parameter 'collection')`
-inside Avalonia's `Polyline.CreateDefiningGeometry()`. Root-caused to
-`AnnotationPreviewShape.Points` (`src/Acroball.UI/ViewModels/AnnotationPreviewShape.cs`)
-being a nullable `Points?` defaulting to `null` for every non-Ink shape, while
-`ViewerView.axaml` binds it directly into a `Polyline.Points` — a real
-null-safety gap, though it was not conclusively reproduced as the exact cause
-of that one crash (a subsequent relaunch of the pre-fix build ran clean for
-the rest of the session). Fixed by defaulting `Points` to `[]` instead of
-`null`, committed in `39f790f` along with the checkpoint update that
-introduced this file's prior revision. Full solution build and the full test
-suite (204 tests: `Acroball.Domain.Tests` 33, `Acroball.Application.Tests` 4,
-`Acroball.UI.Tests` 99, `Acroball.Infrastructure.Tests` 68) are green with
-the fix in place.
+Verified and closed the M5 release task: pushed tag `app-v0.1.0` on `main`,
+which ran the `App Release` GitHub Actions workflow end-to-end
+(`gh run list`/`gh run watch` confirmed `completed`/`success` in 2m6s) and
+published a real GitHub release (`gh release view app-v0.1.0`) with all five
+platform assets — `acroball-win-x64.zip`, `acroball-osx-x64.tar.gz`,
+`acroball-osx-arm64.tar.gz`, `acroball-linux-x64.tar.gz`,
+`acroball-linux-arm64.tar.gz`. Before that, merged `feature/pdf-viewer-editing`
+into `main` (`d4f6b0b`) after discovering PR #1 had merged the branch one
+commit short of its tip (missing the `AnnotationPreviewShape.Points`
+null-safety fix); local `main` was synced to `origin/main` first, then the
+remaining commit was merged in with `--no-ff`, rebuilt, and retested (204
+tests, 0 failures) before pushing.
 
 ## Current Blockers
-1. Branch `feature/pdf-viewer-editing` is not yet merged into `main`; the
-   user has decided to merge as-is (merge commit, preserving branch
-   history) now that all four M6/M7 features are manually confirmed working.
-2. Pre-existing, unrelated to this feature work: the M5 task (push the
-   already-committed `.github/workflows/app-release.yml` and verify a real
-   `app-v0.1.0` release on GitHub) is still outstanding underneath
-   everything above.
+None. `main` is clean, up to date with `origin/main`, builds, and passes the
+full test suite (204 tests). `feature/pdf-viewer-editing` is fully merged and
+can be deleted whenever convenient (not yet done, no urgency).
 
 ## Next Immediate Task
-Merge `feature/pdf-viewer-editing` into `main` (merge commit, not squash),
-then resume the outstanding M5 task (push `app-release.yml`, verify the
-`app-v0.1.0` GitHub release).
+Get the next milestone's scope from the user, then begin it. No task is
+implied by the repository alone right now — this is a genuine decision
+point, not something to infer from code or commit history.
 
 ## Context Dependency Index
-- src/Acroball.UI/ViewModels/AnnotationPreviewShape.cs
-- src/Acroball.UI/Views/ViewerView.axaml
-- .github/workflows/app-release.yml
+None.
