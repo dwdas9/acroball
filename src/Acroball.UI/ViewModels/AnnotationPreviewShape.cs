@@ -30,7 +30,7 @@ public sealed class AnnotationPreviewShape
     public double Height { get; init; }
 
     /// <summary>Stroke points, in display pixels, for Ink.</summary>
-    public Points? Points { get; init; }
+    public Points Points { get; init; } = [];
 
     /// <summary>The typed text, for FreeText.</summary>
     public string? Text { get; init; }
