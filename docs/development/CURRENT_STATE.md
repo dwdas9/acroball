@@ -1,32 +1,22 @@
 # Current State
 
-Last updated: 2026-07-28
+Last updated: 2026-08-02
 
 ## Current Milestone
-M5/M6/M7 — Acrobat-style viewing and editing (Viewer, Bookmarks, Annotations,
-Fill Form) plus the release pipeline — all closed out. `main` now contains
-everything from `feature/pdf-viewer-editing` (merged via PR #1 plus one
-follow-up merge commit for a null-safety fix that landed after the PR).
-No milestone is currently active; the next one has not yet been chosen.
+None — M5/M6/M7 closed out (see prior checkpoint); the next milestone's
+scope has not yet been chosen by the user.
 
 ## Last Completed Action
-Verified and closed the M5 release task: pushed tag `app-v0.1.0` on `main`,
-which ran the `App Release` GitHub Actions workflow end-to-end
-(`gh run list`/`gh run watch` confirmed `completed`/`success` in 2m6s) and
-published a real GitHub release (`gh release view app-v0.1.0`) with all five
-platform assets — `acroball-win-x64.zip`, `acroball-osx-x64.tar.gz`,
-`acroball-osx-arm64.tar.gz`, `acroball-linux-x64.tar.gz`,
-`acroball-linux-arm64.tar.gz`. Before that, merged `feature/pdf-viewer-editing`
-into `main` (`d4f6b0b`) after discovering PR #1 had merged the branch one
-commit short of its tip (missing the `AnnotationPreviewShape.Points`
-null-safety fix); local `main` was synced to `origin/main` first, then the
-remaining commit was merged in with `--no-ff`, rebuilt, and retested (204
-tests, 0 failures) before pushing.
+No repository files were changed this session. Verified the local build
+environment on this machine works end to end: resolved a `global.json`
+SDK-version mismatch (only .NET 11 preview was installed; repo pins
+`10.0.301` with `rollForward: latestFeature`) by installing .NET 10.0.302 to
+`~/.dotnet` (user-owned, no sudo), then ran `dotnet build` (succeeded, 0
+warnings/0 errors) and `dotnet run --project src/Acroball.Desktop` (app
+launched and rendered a window).
 
 ## Current Blockers
-None. `main` is clean, up to date with `origin/main`, builds, and passes the
-full test suite (204 tests). `feature/pdf-viewer-editing` is fully merged and
-can be deleted whenever convenient (not yet done, no urgency).
+None. Repository builds and passes as previously verified.
 
 ## Next Immediate Task
 Get the next milestone's scope from the user, then begin it. No task is
