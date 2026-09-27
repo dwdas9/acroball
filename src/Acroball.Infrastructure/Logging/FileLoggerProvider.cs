@@ -11,7 +11,7 @@ namespace Acroball.Infrastructure.Logging;
 /// </summary>
 /// <remarks>
 /// Chosen over Serilog to keep the dependency surface minimal for what this
-/// app needs â€” plain diagnostic text files (see ADR-0006). Level filtering is
+/// app needs — plain diagnostic text files (see ADR-0006). Level filtering is
 /// left to <see cref="ILoggerFactory"/> configuration; this provider writes
 /// whatever it is handed. Files older than <see cref="RetentionDays"/> are
 /// deleted at startup.

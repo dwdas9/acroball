@@ -1,27 +1,31 @@
 # Current State
 
-Last updated: 2026-08-02
+Last updated: 2026-09-27
 
 ## Current Milestone
-None — M5/M6/M7 closed out (see prior checkpoint); the next milestone's
-scope has not yet been chosen by the user.
+1.0 release, as defined by ADR-0015 (scope, deferrals, release criteria).
 
 ## Last Completed Action
-No repository files were changed this session. Verified the local build
-environment on this machine works end to end: resolved a `global.json`
-SDK-version mismatch (only .NET 11 preview was installed; repo pins
-`10.0.301` with `rollForward: latestFeature`) by installing .NET 10.0.302 to
-`~/.dotnet` (user-owned, no sudo), then ran `dotnet build` (succeeded, 0
-warnings/0 errors) and `dotnet run --project src/Acroball.Desktop` (app
-launched and rendered a window).
+Release criteria 1–3 of ADR-0015 are met and verified locally on Windows.
+`Directory.Build.props` is `<Version>1.0.0</Version>`; Release build has 0
+warnings/0 errors and all 207 tests pass. `.github/workflows/app-release.yml`
+now publishes `win-x64` as a folder build (not single-file) and strips
+`.pdb`/`.xml` from every archive. A local package
+`dist/acroball-1.0.0-win-x64.zip` (gitignored) was extracted fresh and
+launched to a visible "Acroball" window. Double-encoded text was repaired in
+10 files, guarded by `tests/Acroball.UI.Tests/ToolCatalogTests.cs`. Work is
+committed on local branch `release/1.0`, not pushed.
 
 ## Current Blockers
-None. Repository builds and passes as previously verified.
+Criterion 4 (the `app-v1.0.0` GitHub release) needs the user's go-ahead to
+push, because pushing the tag publishes a public release. The macOS/Linux
+archives and the workflow edit are unverified until that run.
 
 ## Next Immediate Task
-Get the next milestone's scope from the user, then begin it. No task is
-implied by the repository alone right now — this is a genuine decision
-point, not something to infer from code or commit history.
+With user approval: merge `release/1.0` into `main`, push, tag
+`app-v1.0.0`, push the tag, and confirm the `App Release` run attaches all
+five platform archives.
 
 ## Context Dependency Index
-None.
+- docs/adr/0015-v1-scope-and-release-criteria.md
+- .github/workflows/app-release.yml

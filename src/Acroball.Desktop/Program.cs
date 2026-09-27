@@ -51,7 +51,7 @@ public static class Program
 
     /// <summary>
     /// Avalonia bootstrap. Also invoked by the XAML previewer, which skips
-    /// <see cref="Main"/> â€” hence the fallback composition.
+    /// <see cref="Main"/> — hence the fallback composition.
     /// </summary>
     [SupportedOSPlatform("windows")]
     [SupportedOSPlatform("macos")]

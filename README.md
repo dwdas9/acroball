@@ -5,13 +5,21 @@
 Built by dwdas as a personal, modern PDF tool for desktop use.
 
 Acroball is a free, open-source, cross-platform desktop app for working with PDF
-files â€” merge, split, organize, rotate, extract, compress, protect and edit
-metadata â€” built as a modern successor to tools like PDFsam Basic. No
+files — view, annotate, fill forms, merge, split, organize, rotate, extract,
+compress, protect and edit metadata — built as a modern successor to tools like PDFsam Basic. No
 accounts, no uploads, no telemetry: your documents never leave your machine.
 
 Built with .NET 10 and Avalonia 12. Runs natively on Windows, macOS and Linux.
 
 ## Status
+
+**1.0.** All ten tools are complete. What 1.0 includes, what is deferred to
+1.x (self-update, plugins, code signing) and the release criteria are in
+[ADR-0015](docs/adr/0015-v1-scope-and-release-criteria.md).
+
+Builds are unsigned, so Windows SmartScreen and macOS Gatekeeper warn on
+first launch. On Windows choose *More info → Run anyway*; on macOS
+right-click the app and choose *Open*.
 
 ## Building
 
@@ -51,13 +59,18 @@ src/Acroball.Desktop/bin/Release/net10.0/win-x64/publish/Acroball.exe
 
 ## Milestones
 
-- M4: Core PDF tools (metadata, protect, compress)
-- M5: Packaging and distribution (publish executables/installers for Windows, macOS, Linux)
+See the milestones table in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Project layout
 
 ```
-TBD
+src/Acroball.Domain          entities, no dependencies
+src/Acroball.Application     use cases, jobs, engine abstractions
+src/Acroball.Infrastructure  PDFsharp/PDFium engines, settings, logging
+src/Acroball.UI              Avalonia views and view models
+src/Acroball.Desktop         composition root and app host
+src/Acroball.Sdk             plugin contract (reserved for 1.x)
+tests/                       one test project per layer
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture and

@@ -21,26 +21,33 @@ jobs:
         include:
           - os: windows-latest
             rid: win-x64
+            # Unsigned single-file bundles are deleted as false positives by
+            # some antivirus products; ship Windows as a plain folder.
+            single_file: false
             executable: Acroball.exe
             archive_name: acroball-win-x64.zip
             archive_type: zip
           - os: macos-latest
             rid: osx-x64
+            single_file: true
             executable: Acroball
             archive_name: acroball-osx-x64.tar.gz
             archive_type: tar.gz
           - os: macos-latest
             rid: osx-arm64
+            single_file: true
             executable: Acroball
             archive_name: acroball-osx-arm64.tar.gz
             archive_type: tar.gz
           - os: ubuntu-latest
             rid: linux-x64
+            single_file: true
             executable: Acroball
             archive_name: acroball-linux-x64.tar.gz
             archive_type: tar.gz
           - os: ubuntu-latest
             rid: linux-arm64
+            single_file: true
             executable: Acroball
             archive_name: acroball-linux-arm64.tar.gz
             archive_type: tar.gz
@@ -55,14 +62,14 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Publish self-contained single-file build
+      - name: Publish self-contained build
         run: >-
           dotnet publish src/Acroball.Desktop
           -c Release
           -r ${{ matrix.rid }}
           --self-contained true
-          /p:PublishSingleFile=true
-          /p:IncludeNativeLibrariesForSelfExtract=true
+          -p:PublishSingleFile=${{ matrix.single_file }}
+          -p:IncludeNativeLibrariesForSelfExtract=${{ matrix.single_file }}
 
       - name: Verify executable exists
         shell: pwsh
@@ -71,6 +78,12 @@ jobs:
           if (-not (Test-Path $exePath)) {
             throw "Expected executable not found: $exePath"
           }
+
+      - name: Drop debug symbols and API docs from the release
+        shell: pwsh
+        run: |
+          Get-ChildItem "src/Acroball.Desktop/bin/Release/net10.0/${{ matrix.rid }}/publish" -Include *.pdb,*.xml -Recurse | Remove-Item -Force
+          Copy-Item LICENSE, THIRD-PARTY-NOTICES.md "src/Acroball.Desktop/bin/Release/net10.0/${{ matrix.rid }}/publish"
 
       - name: Archive Windows release
         if: matrix.archive_type == 'zip'

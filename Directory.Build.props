@@ -4,7 +4,7 @@
     what is genuinely project-specific (see Acroball.UI's CS1591 note).
   -->
   <PropertyGroup>
-    <Version>0.1.0</Version>
+    <Version>1.0.0</Version>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

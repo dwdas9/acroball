@@ -42,7 +42,7 @@ public sealed class JsonSettingsService : IAppSettingsService
 
     /// <summary>
     /// Loads settings from disk. Missing or unreadable files fall back to
-    /// <see cref="AppSettings.Default"/> â€” settings must never block startup.
+    /// <see cref="AppSettings.Default"/> — settings must never block startup.
     /// </summary>
     public static JsonSettingsService Load(AppPaths paths, ILogger<JsonSettingsService> logger)
     {

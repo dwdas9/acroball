@@ -272,7 +272,7 @@ public sealed class PdfSharpEngine : IPdfEngine
             {
                 if (request.Rotation == Rotation.None)
                 {
-                    throw new PdfOperationException("Choose a rotation other than 0Â°.");
+                    throw new PdfOperationException("Choose a rotation other than 0°.");
                 }
 
                 using var document = Open(request.InputFile, request.Password, PdfDocumentOpenMode.Modify);
@@ -295,7 +295,7 @@ public sealed class PdfSharpEngine : IPdfEngine
                 SaveAtomic(document, request.OutputFile, cancellationToken);
                 progress?.Report(new OperationProgress(1.0, "Done"));
                 _logger.LogInformation(
-                    "Rotated {Count} pages of {Input} by {Degrees}Â°",
+                    "Rotated {Count} pages of {Input} by {Degrees}°",
                     pageNumbers.Count, request.InputFile, request.Rotation.ToDegrees());
             },
             cancellationToken);

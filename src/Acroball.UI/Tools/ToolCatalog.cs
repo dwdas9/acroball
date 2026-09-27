@@ -28,7 +28,7 @@ public static class ToolCatalog
         new("merge", "Merge", "Combine several PDFs into one, in the order you choose.", "Merge", "M3"),
         new("split", "Split", "Break a PDF apart by page ranges into separate files.", "Split", "M2"),
         new("organize", "Organize", "Reorder, rotate, delete and move pages visually.", "Organize", "M3"),
-        new("rotate", "Rotate", "Rotate all pages or a selection, in 90Â° steps.", "Rotate", "M2"),
+        new("rotate", "Rotate", "Rotate all pages or a selection, in 90° steps.", "Rotate", "M2"),
         new("extract", "Extract", "Pull selected pages out into a new document.", "Extract", "M2"),
         new("compress", "Compress", "Shrink file size with control over quality.", "Compress", "M4"),
         new("protect", "Protect", "Add or remove passwords and set permissions.", "Lock", "M4"),

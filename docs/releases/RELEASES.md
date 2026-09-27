@@ -36,6 +36,18 @@ state.
 Key files: `src/Acroball.UI/ViewModels/MergeViewModel.cs`,
 `src/Acroball.UI/Views/MergeView.axaml`, `src/Acroball.Application/Jobs/*`.
 
+## 1.0 — Release
+
+Scope and release criteria fixed in ADR-0015: ten tools (Viewer with
+bookmarks and annotations, Merge, Split, Organize, Rotate, Extract,
+Compress, Protect, Metadata, Fill Form), self-contained executables for
+five RIDs, no network calls. Self-update, plugins and code signing are
+deferred to 1.x. Also fixes double-encoded text (e.g. the Rotate card's
+"90°") across source and docs, guarded by `ToolCatalogTests`.
+
+Key files: `docs/adr/0015-v1-scope-and-release-criteria.md`,
+`Directory.Build.props`, `.github/workflows/app-release.yml`.
+
 ---
 
 Add one entry like the above per milestone when it ships. Do not create a new

@@ -21,7 +21,7 @@ namespace Acroball.Infrastructure.Tests;
 /// <summary>
 /// Integration tests over real PDFs on disk. Fixtures encode page identity in
 /// page geometry (page n of a fixture is 100+n points wide), so assertions
-/// never need text rendering or fonts â€” which keeps the suite green on bare
+/// never need text rendering or fonts — which keeps the suite green on bare
 /// CI runners with no system fonts.
 /// </summary>
 /// <remarks>
@@ -212,7 +212,7 @@ public class PdfSharpEngineTests : IDisposable
         Assert.Equal(101, pages[0].WidthPoints, 1);
         Assert.Equal(Rotation.None, pages[0].Rotation);
         Assert.Equal(Rotation.Clockwise90, pages[1].Rotation);
-        Assert.True(pages[1].IsLandscape); // 102x200 rotated 90Â° presents landscape
+        Assert.True(pages[1].IsLandscape); // 102x200 rotated 90° presents landscape
     }
 
     // ======================== outline ========================
@@ -375,7 +375,7 @@ public class PdfSharpEngineTests : IDisposable
     [Fact]
     public async Task Rotate_adds_delta_only_to_selected_pages()
     {
-        // Page 2 already carries a stored rotation of 90Â°.
+        // Page 2 already carries a stored rotation of 90°.
         var source = CreateFixture("doc.pdf", 3, doc => doc.Pages[1].Rotate = 90);
         var output = P("rotated.pdf");
 

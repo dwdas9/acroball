@@ -12,13 +12,13 @@ public enum Rotation
     /// <summary>No rotation.</summary>
     None = 0,
 
-    /// <summary>Rotate 90Â° clockwise.</summary>
+    /// <summary>Rotate 90° clockwise.</summary>
     Clockwise90 = 90,
 
-    /// <summary>Rotate 180Â°.</summary>
+    /// <summary>Rotate 180°.</summary>
     Rotate180 = 180,
 
-    /// <summary>Rotate 90Â° counter-clockwise (270Â° clockwise).</summary>
+    /// <summary>Rotate 90° counter-clockwise (270° clockwise).</summary>
     CounterClockwise90 = 270,
 }
 

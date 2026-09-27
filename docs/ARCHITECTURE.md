@@ -149,14 +149,19 @@ remembered as a flag).
 
 ## Milestones
 
+1.0 is defined by ADR-0015. Milestone labels below are what actually
+shipped; the original plan's later labels were reused along the way.
+
 | # | Contents |
 | --- | --- |
-| M1 | Solution skeleton, design system, themed shell, settings/theme/logging, test harness. **This baseline.** |
-| M2 | PDFsharp engine + integration tests (**done**); Merge and Split/Extract/Rotate tool pages, file pickers, progress/cancel UX, headless UI tests (remaining). |
-| M3 | PDFium rendering service, thumbnail pipeline, visual Organize tool (drag-reorder, delete, rotate, cross-file compose). |
-| M4 | Compress, Protect (encrypt/decrypt/permissions), Metadata editor; command palette; custom window chrome. |
-| M5 | Plugin loading (ALC), plugin manager UI, SDK contribution points; accessibility pass. |
-| M6 | Velopack packaging (Windows/macOS/Linux), self-update, code signing, 1.0. |
+| M1 | Solution skeleton, design system, themed shell, settings/theme/logging, test harness. |
+| M2 | PDFsharp engine; Split, Extract, Rotate tool pages. |
+| M3 | Merge workflow and job framework; PDFium rendering; visual Organize tool. |
+| M4 | Compress, Protect, Metadata. |
+| M5 | Release packaging: self-contained executables for five RIDs via the `App Release` workflow. |
+| M6 | Viewer (virtualized), bookmark navigation, annotations. |
+| M7 | Fill Form (AcroForm). |
+| 1.0 | Release per ADR-0015. Deferred to 1.x: Velopack self-update, plugins, code signing, command palette. |
 
 ## Packaging plan (ADR-0005/0008)
 
@@ -174,6 +179,6 @@ reduced-motion by keeping animation opacity/transform-only and short.
 
 ## Privacy
 
-Everything is local. No network calls exist in M1–M5 at all; M6 adds exactly
-one — the self-update check — which is user-visible and disableable.
+Everything is local. Acroball 1.0 makes no network calls at all. The self-update check
+(deferred to 1.x, ADR-0015) will be the only one, user-visible and disableable.
 

@@ -19,3 +19,6 @@ TestResults/
 !/docs/**/*.md
 !/.claude/commands/*.md
 !/.github/copilot-instructions.md
+
+# Local release packages
+dist/
